@@ -1,5 +1,10 @@
+use std::io;
 use std::io::prelude::*;
-use std::net::{TcpListener, TcpStream};
+use std::result::Result;
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
+use tokio::net::TcpListener;
+use tokio::net::TcpStream;
 #[derive(Debug)]
 pub enum HandleConnError {
     Error(std::io::Error),
@@ -9,41 +14,34 @@ impl From<std::io::Error> for HandleConnError {
         HandleConnError::Error(value)
     }
 }
+#[tokio::main]
+async fn main() -> io::Result<()> {
+    let listener = TcpListener::bind("127.0.0.1:7000").await?;
 
-fn main() {
-    println!("Hello, world!");
-    let listener = match TcpListener::bind("127.0.0.1:7000") {
-        Ok(l) => l,
-        Err(e) => {
-            println!("{e}");
-            return;
-        }
-    };
-    for stream in listener.incoming() {
-        let stream = match stream {
-            Ok(s) => s,
-            Err(e) => {
-                println!("{e}");
-                return;
-            }
-        };
-        match handle_conn(stream) {
-            Ok(_) => (),
-            Err(e) => {
-                println!("{:?}", e);
-                return;
-            }
-        };
+    loop {
+        let (socket, _) = listener.accept().await?;
+        tokio::spawn(async move {
+            match handle_conn(socket).await {
+                Ok(_) => (),
+                Err(e) => {
+                    println!("{e}");
+                    return;
+                }
+            };
+        });
     }
 }
-pub fn handle_conn(mut stream: TcpStream) -> Result<(), HandleConnError> {
-    let mut prebuf = [0; 1024];
-    stream.read(&mut prebuf)?;
-    println!("Request {}", String::from_utf8_lossy(&prebuf[..]));
-    let response = "HTTP/1.1 200 OK\r\n\r\n";
-    stream.write(response.as_bytes())?;
-
-    stream.flush()?;
-    stream.shutdown(std::net::Shutdown::Both)?;
+pub async fn handle_conn(mut socket: TcpStream) -> std::io::Result<()> {
+    let mut buf = [0; 1024];
+    socket.read(&mut buf).await?;
+    println!("{}", String::from_utf8_lossy(&buf[..]));
+    let file = std::fs::read_to_string("views/index.html").unwrap();
+    let response = format!(
+        "HTTP/1.1 200 OK\r\nContent-Lenght: {}\r\n\r\n{}",
+        file.len(),
+        file
+    );
+    socket.write(response.as_bytes()).await?;
+    socket.flush().await?;
     return Ok(());
 }
