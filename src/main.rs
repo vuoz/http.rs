@@ -22,10 +22,11 @@ pub struct Header {
     pub key: String,
     pub val: String,
 }
+#[derive(Debug)]
 pub enum Body {
     Binary(Vec<u8>),
     Text(String),
-    MetaData(MetaData),
+    None,
 }
 
 pub enum TypeOfData {
@@ -80,7 +81,6 @@ pub async fn handle_conn(mut socket: TcpStream) -> std::io::Result<()> {
     socket.read(&mut buf).await?;
     let req_str = String::from_utf8_lossy(&buf[..]);
     let lines: Vec<&str> = req_str.split("\r\n").collect();
-    println!("Request {:#?}", lines);
     if lines.len() <= 0 {
         return Err(std::io::Error::new(
             io::ErrorKind::Other,
@@ -97,7 +97,6 @@ pub async fn handle_conn(mut socket: TcpStream) -> std::io::Result<()> {
         }
     };
     let mut headers: HashMap<String, String> = HashMap::new();
-    dbg!(req_metadata);
     let mut j = 0;
     for i in 1..lines.len() {
         j += 1;
@@ -116,7 +115,22 @@ pub async fn handle_conn(mut socket: TcpStream) -> std::io::Result<()> {
         };
         headers.insert(header.key, header.val);
     }
-    // lines.get(j+1);
+
+    let body = match lines.get(j + 1) {
+        Some(line) => {
+            let body_parsed = match parse_body(line) {
+                Some(data) => data,
+                None => Body::None,
+            };
+            body_parsed
+        }
+        None => Body::None,
+    };
+
+    dbg!(req_metadata);
+    println!("{:#?}", body);
+    println!("{:#?}", headers);
+
     //then parse body
     //Then give all the data to the handler after getting the correct handler with the path
 
@@ -132,11 +146,17 @@ pub async fn handle_conn(mut socket: TcpStream) -> std::io::Result<()> {
     return Ok(());
 }
 pub fn parse_body(inpt: &str) -> Option<Body> {
-    return None;
+    let parts: Vec<String> = inpt.split("\0").map(|part| part.to_string()).collect();
+    let text_part = parts.get(0)?.clone();
+    if text_part == "" {
+        return None;
+    }
+
+    return Some(Body::Text(text_part));
 }
 
 pub fn parse_header(inpt: &str) -> Option<Header> {
-    let headers: Vec<String> = inpt.split(":").map(|part| part.to_string()).collect();
+    let headers: Vec<String> = inpt.split(": ").map(|part| part.to_string()).collect();
     if headers.len() != 2 {
         return None;
     }
