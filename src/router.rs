@@ -1,21 +1,27 @@
+use async_std::sync::Arc;
 use std::collections::HashMap;
 use tokio::net::TcpListener;
 
-#[derive(Debug, Clone)]
-pub struct Router<T> {
-    pub routes: HashMap<String, String>,
+use crate::response::IntoResp;
+
+pub struct Router<T: Copy> {
+    pub routes: HashMap<String, Arc<dyn IntoResp + Send + Sync>>,
     pub state: Option<T>,
 }
 
-impl<T> Router<T> {
+impl<T: Copy> Router<T> {
     pub fn new() -> Router<T> {
         Router {
             routes: HashMap::new(),
             state: None,
         }
     }
-    pub fn handle(&mut self, path: String, func: String) -> std::io::Result<()> {
-        self.routes.insert(path, func);
+    pub fn handle(
+        &mut self,
+        path: String,
+        func: impl IntoResp + std::marker::Sync + std::marker::Send + 'static,
+    ) -> std::io::Result<()> {
+        self.routes.insert(path, Arc::new(func));
         return Ok(());
     }
     pub fn add_state(&mut self, state: T) {
