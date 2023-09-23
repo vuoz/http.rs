@@ -1,3 +1,5 @@
+pub mod router;
+
 use std::collections::HashMap;
 use std::io;
 use std::io::prelude::*;
@@ -18,6 +20,7 @@ impl From<std::io::Error> for HandleConnError {
         HandleConnError::Error(value)
     }
 }
+#[derive(Debug)]
 pub struct Header {
     pub key: String,
     pub val: String,
@@ -28,17 +31,36 @@ pub enum Body {
     Text(String),
     None,
 }
+#[derive(Debug)]
+pub enum ContentType {
+    Json(String),
+    UrlEncoded(HashMap<String, String>),
+    PlainText(String),
+    Binary(Vec<u8>),
+    None,
+}
+#[derive(Debug)]
+pub struct QueryParam {
+    pub key: String,
+    pub val: String,
+}
 
 pub enum TypeOfData {
     Header(Header),
     Body(Body),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MetaData {
     pub method: String,
     pub path: String,
     pub version: String,
+}
+#[derive(Debug)]
+pub struct Request {
+    pub metadata: MetaData,
+    pub body: Option<ContentType>,
+    pub headers: HashMap<String, String>,
 }
 // this will prob change but the
 // idea is to have a trait that all handlers must impl
@@ -127,10 +149,26 @@ pub async fn handle_conn(mut socket: TcpStream) -> std::io::Result<()> {
         None => Body::None,
     };
 
-    dbg!(req_metadata);
-    println!("{:#?}", body);
-    println!("{:#?}", headers);
-
+    let req = match headers.get("content-type") {
+        Some(header) => {
+            let body = parse_body_new(body, header.clone()).unwrap();
+            Request {
+                metadata: req_metadata.clone(),
+                body: Some(body),
+                headers: headers.clone(),
+            }
+        }
+        None => {
+            let req = Request {
+                metadata: req_metadata.clone(),
+                body: None,
+                headers,
+            };
+            req
+        }
+    };
+    dbg!(req);
+    //req.metadata.path
     //then parse body
     //Then give all the data to the handler after getting the correct handler with the path
 
@@ -145,6 +183,37 @@ pub async fn handle_conn(mut socket: TcpStream) -> std::io::Result<()> {
     socket.flush().await?;*/
     return Ok(());
 }
+pub fn parse_params(inpt: &str) -> Option<ContentType> {
+    let params_pairs: Vec<QueryParam> = inpt
+        .split("&")
+        .map(|param| {
+            let params_vec: Vec<String> = param.split("=").map(|param| param.to_string()).collect();
+            QueryParam {
+                key: params_vec.get(0).unwrap().clone(),
+                val: params_vec.get(1).unwrap().clone(),
+            }
+        })
+        .collect();
+
+    let mut queryparams_map = HashMap::new();
+    for pair in params_pairs {
+        queryparams_map.insert(pair.key, pair.val);
+    }
+    return Some(ContentType::UrlEncoded(queryparams_map));
+}
+pub fn parse_body_new(inpt: Body, content_type: String) -> Option<ContentType> {
+    match content_type.as_str() {
+        "application/x-www-form-urlencoded" => {
+            let data = match inpt {
+                Body::Binary(_) => return None,
+                Body::Text(t) => parse_params(t.as_str()),
+                Body::None => return None,
+            };
+            data
+        }
+        _ => return None,
+    }
+}
 pub fn parse_body(inpt: &str) -> Option<Body> {
     let parts: Vec<String> = inpt.split("\0").map(|part| part.to_string()).collect();
     let text_part = parts.get(0)?.clone();
@@ -156,7 +225,10 @@ pub fn parse_body(inpt: &str) -> Option<Body> {
 }
 
 pub fn parse_header(inpt: &str) -> Option<Header> {
-    let headers: Vec<String> = inpt.split(": ").map(|part| part.to_string()).collect();
+    let headers: Vec<String> = inpt
+        .split(": ")
+        .map(|part| part.to_string().to_lowercase())
+        .collect();
     if headers.len() != 2 {
         return None;
     }
