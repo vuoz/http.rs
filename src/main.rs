@@ -1,9 +1,9 @@
 pub mod response;
 pub mod router;
-use crate::router::AltHandlerFunc;
 use http::StatusCode;
 use response::IntoResp;
-use router::HandlerFuncReal;
+use router::HandlerResponse;
+use router::HandlerType;
 use router::Router;
 use std::collections::HashMap;
 use std::future::Future;
@@ -69,21 +69,21 @@ pub struct Request {
     pub body: Option<ContentType>,
     pub headers: HashMap<String, String>,
 }
-async fn test_handler(req: Request) -> Box<dyn IntoResp> {
-    return Box::new((StatusCode::OK, "adsad".to_string()));
+fn test_handler(req: Request) -> HandlerResponse<'static> {
+    Box::pin(async move {
+        let response: Box<dyn IntoResp + Send> = Box::new((StatusCode::OK, "asdasda".to_string()));
+        response
+    })
 }
 #[tokio::main]
 async fn main() -> io::Result<()> {
-    let router: &mut Router<&str> = Router::new()
-        .handle("/dasd", HandlerFuncReal { 0: test_handler })
-        .await
-        .unwrap();
-    router.serve("127.0.0.1:7000".to_string());
+    let router: Router = Router::new().handle("/dasd", test_handler).await.unwrap();
+    router.serve("127.0.0.1:7000".to_string()).await.unwrap();
     Ok(())
 }
 pub async fn handle_conn(
     mut socket: TcpStream,
-    handlers: HashMap<String, Arc<AltHandlerFunc>>,
+    handlers: Arc<HashMap<String, HandlerType>>,
 ) -> std::io::Result<()> {
     let mut buf = [0; 1024];
     socket.read(&mut buf).await?;
@@ -159,7 +159,9 @@ pub async fn handle_conn(
     };
     let res = handler(req).await;
     let response = res.into_response();
-    // Use the response to send back the the client
+    let clone = response.clone();
+    socket.write(clone.as_bytes()).await?;
+    socket.flush().await?;
 
     return Ok(());
 }
