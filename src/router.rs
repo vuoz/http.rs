@@ -1,28 +1,42 @@
+use crate::{response::IntoResp, Request};
 use async_std::sync::Arc;
-use std::collections::HashMap;
+use std::future::{ready, Ready};
+use std::pin::Pin;
+use std::{
+    collections::HashMap,
+    future::{Future, IntoFuture},
+};
 use tokio::net::TcpListener;
-
-use crate::response::IntoResp;
-
+pub type FnResponse = dyn Future<Output = Box<dyn IntoResp>>;
+pub type AltHandlerFunc = fn(Request) -> Pin<Box<FnResponse>>;
+pub struct HandlerFuncReal(AltHandlerFunc);
+impl std::marker::Send for FnResponse {}
+impl IntoFuture for HandlerFuncReal {
+    type Output = AltHandlerFunc;
+    type IntoFuture = Ready<Self::Output>;
+    fn into_future(self) -> Self::IntoFuture {
+        ready(self.0)
+    }
+}
 pub struct Router<T: Copy> {
-    pub routes: HashMap<String, Arc<dyn IntoResp + Send + Sync>>,
+    pub routes: HashMap<String, Arc<AltHandlerFunc>>,
     pub state: Option<T>,
 }
 
-impl<T: Copy> Router<T> {
+impl<T: Copy + std::marker::Send + std::marker::Sync> Router<T> {
     pub fn new() -> Router<T> {
         Router {
             routes: HashMap::new(),
             state: None,
         }
     }
-    pub fn handle(
+    pub async fn handle(
         &mut self,
-        path: String,
-        func: impl IntoResp + std::marker::Sync + std::marker::Send + 'static,
-    ) -> std::io::Result<()> {
-        self.routes.insert(path, Arc::new(func));
-        return Ok(());
+        path: &str,
+        func: HandlerFuncReal,
+    ) -> std::io::Result<&mut Router<T>> {
+        self.routes.insert(path.to_string(), Arc::new(func.0));
+        return Ok(self);
     }
     pub fn add_state(&mut self, state: T) {
         self.state = Some(state);
@@ -33,11 +47,10 @@ impl<T: Copy> Router<T> {
         loop {
             let (socket, _) = listener.accept().await?;
             tokio::spawn(async move {
-                match crate::handle_conn(socket).await {
+                match crate::handle_conn(socket, self.routes).await {
                     Ok(_) => (),
                     Err(e) => {
-                        println!("{e}");
-                        return;
+                        panic!("Cannot handle incomming connection: {e}")
                     }
                 };
             });

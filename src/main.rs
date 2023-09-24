@@ -1,11 +1,17 @@
 pub mod response;
 pub mod router;
-
+use crate::router::AltHandlerFunc;
+use http::StatusCode;
+use response::IntoResp;
+use router::HandlerFuncReal;
+use router::Router;
 use std::collections::HashMap;
+use std::future::Future;
 use std::io;
 use std::io::prelude::*;
 use std::io::BufReader;
 use std::ops::Deref;
+use std::pin::Pin;
 use std::result::Result;
 use std::sync::Arc;
 use tokio::io::AsyncReadExt;
@@ -63,43 +69,22 @@ pub struct Request {
     pub body: Option<ContentType>,
     pub headers: HashMap<String, String>,
 }
-// this will prob change but the
-// idea is to have a trait that all handlers must impl
-// so that different functions can be used to handle
-/*
-trait handlable {
-    fn handle(&self) -> http::StatusCode;
-}*/
-// Will probably need a map for all the routes registered
-// But this will probably be in a struct that will be impled
-// like this
-// struct Router{
-//    routes: Arc<HashMap<String,handlable>>,
-// }
-// impl Router{}
-// ...
-/*
-let map: HashMap<String, String /*placeholder*/> = HashMap::new();
-let routermap = Arc::new(map);
-*/
+async fn test_handler(req: Request) -> Box<dyn IntoResp> {
+    return Box::new((StatusCode::OK, "adsad".to_string()));
+}
 #[tokio::main]
 async fn main() -> io::Result<()> {
-    let listener = TcpListener::bind("127.0.0.1:7000").await?;
-
-    loop {
-        let (socket, _) = listener.accept().await?;
-        tokio::spawn(async move {
-            match handle_conn(socket).await {
-                Ok(_) => (),
-                Err(e) => {
-                    println!("{e}");
-                    return;
-                }
-            };
-        });
-    }
+    let router: &mut Router<&str> = Router::new()
+        .handle("/dasd", HandlerFuncReal { 0: test_handler })
+        .await
+        .unwrap();
+    router.serve("127.0.0.1:7000".to_string());
+    Ok(())
 }
-pub async fn handle_conn(mut socket: TcpStream) -> std::io::Result<()> {
+pub async fn handle_conn(
+    mut socket: TcpStream,
+    handlers: HashMap<String, Arc<AltHandlerFunc>>,
+) -> std::io::Result<()> {
     let mut buf = [0; 1024];
     socket.read(&mut buf).await?;
     let req_str = String::from_utf8_lossy(&buf[..]);
@@ -168,20 +153,14 @@ pub async fn handle_conn(mut socket: TcpStream) -> std::io::Result<()> {
             req
         }
     };
-    dbg!(req);
-    //req.metadata.path
-    //then parse body
-    //Then give all the data to the handler after getting the correct handler with the path
+    let handler = match handlers.get(&req.metadata.path) {
+        Some(handler) => handler,
+        None => todo!(), //Just return with 404 or use provided fallback handler
+    };
+    let res = handler(req).await;
+    let response = res.into_response();
+    // Use the response to send back the the client
 
-    /*
-    let file = "Hello file";
-    let response = format!(
-        "HTTP/1.1 200 OK\r\nContent-Lenght: {}\r\n\r\n{}",
-        file.len(),
-        file
-    );
-    socket.write(response.as_bytes()).await?;
-    socket.flush().await?;*/
     return Ok(());
 }
 pub fn parse_params(inpt: &str) -> Option<ContentType> {
