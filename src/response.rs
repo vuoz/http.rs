@@ -15,6 +15,17 @@ impl IntoResp for (StatusCode, String) {
         return response;
     }
 }
+impl IntoResp for StatusCode {
+    fn into_response(&self) -> String {
+        let response = format!(
+            "HTTP/1.1 {} {}\r\nContent-Length: {}\r\n\r\n",
+            self.as_u16(),
+            status_to_string(self.clone()),
+            0,
+        );
+        return response;
+    }
+}
 
 // Would rather do it with a trait but this is a quick solution
 // Will change that in the future

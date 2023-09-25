@@ -1,7 +1,9 @@
+pub mod request;
 pub mod response;
 pub mod router;
 use crate::response::status_to_string;
 use http::StatusCode;
+use request::parse_request;
 use response::IntoResp;
 use router::HandlerResponse;
 use router::HandlerType;
@@ -91,87 +93,26 @@ pub async fn handle_conn(
     let mut buf = [0; 1024];
     socket.read(&mut buf).await?;
     let req_str = String::from_utf8_lossy(&buf[..]);
-    let lines: Vec<&str> = req_str.split("\r\n").collect();
-    if lines.len() <= 0 {
-        return Err(std::io::Error::new(
-            io::ErrorKind::Other,
-            "not a valid request",
-        ));
-    }
-    let req_metadata = match parse_method_line(lines.get(0).unwrap()) {
-        Some(data) => data,
-        None => {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "cannot parse line",
-            ))
-        }
-    };
-    let mut headers: HashMap<String, String> = HashMap::new();
-    let mut j = 0;
-    for i in 1..lines.len() {
-        j += 1;
-        let line = match lines.get(i) {
-            Some(line) => line,
-            None => {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "cannot parse line",
-                ))
-            }
-        };
-        let header = match parse_header(line) {
-            Some(h) => h,
-            None => break,
-        };
-        headers.insert(header.key, header.val);
-    }
-
-    let body = match lines.get(j + 1) {
-        Some(line) => {
-            let body_parsed = match parse_body(line) {
-                Some(data) => data,
-                None => Body::None,
-            };
-            body_parsed
-        }
-        None => Body::None,
-    };
-
-    let req = match headers.get("content-type") {
-        Some(header) => {
-            let body = parse_body_new(body, header.clone()).unwrap();
-            Request {
-                metadata: req_metadata.clone(),
-                body: Some(body),
-                headers: headers.clone(),
-            }
-        }
-        None => {
-            let req = Request {
-                metadata: req_metadata.clone(),
-                body: None,
-                headers,
-            };
-            req
-        }
-    };
-    let handler = match handlers.get(&req.metadata.path) {
-        Some(handler) => handler,
-        None => {
-            let res = format!(
-                "HTTP/1.1 {} {}\r\nContent-Length: {}\r\n\r\n{}",
-                404,
-                status_to_string(StatusCode::NOT_FOUND),
-                0,
-                "",
-            );
+    let request = match parse_request(req_str) {
+        Ok(request) => request,
+        Err(_) => {
+            let res = StatusCode::INTERNAL_SERVER_ERROR.into_response();
             socket.write(res.as_bytes()).await?;
             socket.flush().await?;
             return Ok(());
-        } //Just return with 404 or use provided fallback handler
+        }
     };
-    let res = handler(req).await;
+
+    let handler = match handlers.get(&request.metadata.path) {
+        Some(handler) => handler,
+        None => {
+            let res = StatusCode::NOT_FOUND.into_response();
+            socket.write(res.as_bytes()).await?;
+            socket.flush().await?;
+            return Ok(());
+        }
+    };
+    let res = handler(request).await;
     let response = res.into_response();
     let clone = response.clone();
     socket.write(clone.as_bytes()).await?;
