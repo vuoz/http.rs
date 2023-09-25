@@ -1,5 +1,6 @@
 pub mod response;
 pub mod router;
+use crate::response::status_to_string;
 use http::StatusCode;
 use response::IntoResp;
 use router::HandlerResponse;
@@ -71,6 +72,8 @@ pub struct Request {
 }
 fn test_handler(req: Request) -> HandlerResponse<'static> {
     Box::pin(async move {
+        // This works but isnt really ideal, especially for the user since it is not really clear
+        // and straight forward
         let response: Box<dyn IntoResp + Send> = Box::new((StatusCode::OK, "asdasda".to_string()));
         response
     })
@@ -155,7 +158,18 @@ pub async fn handle_conn(
     };
     let handler = match handlers.get(&req.metadata.path) {
         Some(handler) => handler,
-        None => todo!(), //Just return with 404 or use provided fallback handler
+        None => {
+            let res = format!(
+                "HTTP/1.1 {} {}\r\nContent-Length: {}\r\n\r\n{}",
+                404,
+                status_to_string(StatusCode::NOT_FOUND),
+                0,
+                "",
+            );
+            socket.write(res.as_bytes()).await?;
+            socket.flush().await?;
+            return Ok(());
+        } //Just return with 404 or use provided fallback handler
     };
     let res = handler(req).await;
     let response = res.into_response();
