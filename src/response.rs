@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use http::StatusCode;
 
 pub trait IntoResp {
@@ -24,6 +26,25 @@ impl IntoResp for StatusCode {
             0,
         );
         return response;
+    }
+}
+impl IntoResp for (StatusCode, HashMap<String, String>, String) {
+    fn into_response(&self) -> String {
+        let headers_clone = self.1.clone();
+        let headers_into_resp: Vec<String> = headers_clone
+            .into_iter()
+            .map(|(key, val)| format!("{}:{}", key, val))
+            .collect();
+        let headers_string = headers_into_resp.join("\r\n");
+        let response = format!(
+            "HTTP/1.1 {} {}\r\nContent-Length: {}\r\n{}\r\n{}",
+            self.0.as_u16(),
+            status_to_string(self.0),
+            self.2.len(),
+            headers_string + "\r\n",
+            self.2
+        );
+        response
     }
 }
 

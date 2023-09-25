@@ -2,7 +2,6 @@ pub mod parse;
 pub mod request;
 pub mod response;
 pub mod router;
-use crate::response::status_to_string;
 use http::StatusCode;
 use request::parse_request;
 use response::IntoResp;
@@ -10,17 +9,11 @@ use router::HandlerResponse;
 use router::HandlerType;
 use router::Router;
 use std::collections::HashMap;
-use std::future::Future;
 use std::io;
-use std::io::prelude::*;
-use std::io::BufReader;
-use std::ops::Deref;
-use std::pin::Pin;
-use std::result::Result;
+
 use std::sync::Arc;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
-use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 #[derive(Debug)]
 pub enum HandleConnError {
@@ -84,7 +77,10 @@ fn test_handler(req: Request) -> HandlerResponse<'static> {
     Box::pin(async move {
         // This works but isnt really ideal, especially for the user since it is not really clear
         // and straight forward
-        let response: Box<dyn IntoResp + Send> = Box::new((StatusCode::OK, "asdasda".to_string()));
+        let mut headers: HashMap<String, String> = HashMap::new();
+        headers.insert("x-auth".to_string(), "hello-from-my-handler".to_string());
+        let response: Box<dyn IntoResp + Send> =
+            Box::new((StatusCode::OK, headers, "asdasda".to_string()));
         response
     })
 }
@@ -101,7 +97,7 @@ pub struct AppState {
 }
 #[tokio::main]
 async fn main() -> io::Result<()> {
-    let example_file = std::fs::read_to_string("views/index.view").unwrap();
+    let example_file = std::fs::read_to_string("views/index.html").unwrap();
     let my_state = AppState {
         hello_page: example_file,
     };

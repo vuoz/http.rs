@@ -1,4 +1,3 @@
-use crate::RequestWithState;
 use crate::{response::IntoResp, Request};
 use async_std::sync::Arc;
 use std::pin::Pin;
