@@ -73,6 +73,13 @@ pub struct Request {
     pub body: Option<ContentType>,
     pub headers: HashMap<String, String>,
 }
+#[derive(Debug)]
+pub struct RequestWithState<T: Clone> {
+    pub metadata: MetaData,
+    pub body: Option<ContentType>,
+    pub headers: HashMap<String, String>,
+    pub state: T,
+}
 fn test_handler(req: Request) -> HandlerResponse<'static> {
     Box::pin(async move {
         // This works but isnt really ideal, especially for the user since it is not really clear
@@ -81,9 +88,28 @@ fn test_handler(req: Request) -> HandlerResponse<'static> {
         response
     })
 }
+fn test_handler_with_state(req: RequestWithState<AppState>) -> HandlerResponse<'static> {
+    Box::pin(async move {
+        let response: Box<dyn IntoResp + Send> = Box::new((StatusCode::OK, "asdasda".to_string()));
+        response
+    })
+}
+
+#[derive(Clone, Debug)]
+pub struct AppState {
+    pub hello_page: String,
+}
 #[tokio::main]
 async fn main() -> io::Result<()> {
-    let router: Router = Router::new().handle("/dasd", test_handler).await.unwrap();
+    let example_file = std::fs::read_to_string("views/index.view").unwrap();
+    let my_state = AppState {
+        hello_page: example_file,
+    };
+    let router: Router<AppState> = Router::new()
+        .handle("/dasd", test_handler)
+        .await
+        .unwrap()
+        .add_state(my_state);
     router.serve("127.0.0.1:7000".to_string()).await.unwrap();
     Ok(())
 }

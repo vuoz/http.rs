@@ -12,11 +12,20 @@ pub fn parse_params(inpt: &str) -> Option<ContentType> {
         .split("&")
         .map(|param| {
             let params_vec: Vec<String> = param.split("=").map(|param| param.to_string()).collect();
+            if let Some(key) = params_vec.get(0) {
+                if let Some(val) = params_vec.get(1) {
+                    return QueryParam {
+                        key: key.clone(),
+                        val: val.clone(),
+                    };
+                }
+            }
             QueryParam {
-                key: params_vec.get(0).unwrap().clone(),
-                val: params_vec.get(1).unwrap().clone(),
+                key: "".to_string(),
+                val: "".to_string(),
             }
         })
+        .take_while(|pair| pair.val != "".to_string())
         .collect();
 
     let mut queryparams_map = HashMap::new();
@@ -26,6 +35,8 @@ pub fn parse_params(inpt: &str) -> Option<ContentType> {
     return Some(ContentType::UrlEncoded(queryparams_map));
 }
 pub fn parse_body_new(inpt: Body, content_type: String) -> Option<ContentType> {
+    //This implementation will change in the future i do not think this is the correct approach but
+    //it works for now
     match content_type.as_str() {
         "application/x-www-form-urlencoded" => {
             let data = match inpt {
@@ -35,8 +46,25 @@ pub fn parse_body_new(inpt: Body, content_type: String) -> Option<ContentType> {
             };
             data
         }
+        "application/json" => {
+            let data = match inpt {
+                Body::Binary(_) => return None,
+                Body::Text(t) => parse_json(t.as_str()),
+                Body::None => return None,
+            };
+            data
+        }
+
         _ => return None,
     }
+}
+pub fn parse_json(inpt: &str) -> Option<ContentType> {
+    let parts: Vec<String> = inpt.split("\n").map(|part| part.to_string()).collect();
+    let text_part = parts.get(0)?.clone();
+    if text_part == "" {
+        return None;
+    }
+    return Some(ContentType::Json(text_part));
 }
 pub fn parse_body(inpt: &str) -> Option<Body> {
     let parts: Vec<String> = inpt.split("\0").map(|part| part.to_string()).collect();
