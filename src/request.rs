@@ -1,7 +1,7 @@
-use crate::parse_body;
-use crate::parse_body_new;
-use crate::parse_header;
-use crate::parse_method_line;
+use crate::parse::parse_body;
+use crate::parse::parse_body_new;
+use crate::parse::parse_header;
+use crate::parse::parse_method_line;
 use crate::Body;
 use std::borrow::Cow;
 use std::collections::HashMap;

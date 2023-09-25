@@ -40,8 +40,9 @@ impl Router {
         loop {
             let (socket, _) = listener.accept().await?;
             let routes_clone = self.routes.clone();
+            let fallback_clone = self.fallback.clone();
             tokio::spawn(async move {
-                match crate::handle_conn(socket, Arc::new(routes_clone)).await {
+                match crate::handle_conn(socket, Arc::new(routes_clone), fallback_clone).await {
                     Ok(_) => (),
                     Err(e) => {
                         panic!("Cannot handle incomming connection: {e}")
