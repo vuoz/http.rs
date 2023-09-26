@@ -77,10 +77,10 @@ fn test_handler(req: Request) -> HandlerResponse<'static> {
     Box::pin(async move {
         // This works but isnt really ideal, especially for the user since it is not really clear
         // and straight forward
+        let file = std::fs::read_to_string("views/index.html").unwrap();
         let mut headers: HashMap<String, String> = HashMap::new();
-        headers.insert("x-auth".to_string(), "hello-from-my-handler".to_string());
-        let response: Box<dyn IntoResp + Send> =
-            Box::new((StatusCode::OK, headers, "asdasda".to_string()));
+        headers.insert("Content-type".to_string(), "text/html".to_string());
+        let response: Box<dyn IntoResp + Send> = Box::new((StatusCode::OK, headers, file));
         response
     })
 }
@@ -106,7 +106,7 @@ async fn main() -> io::Result<()> {
         .await
         .unwrap()
         .add_state(my_state);
-    router.serve("127.0.0.1:7000".to_string()).await.unwrap();
+    router.serve("localhost:7000".to_string()).await.unwrap();
     Ok(())
 }
 pub async fn handle_conn(
