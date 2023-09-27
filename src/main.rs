@@ -2,6 +2,7 @@ pub mod parse;
 pub mod request;
 pub mod response;
 pub mod router;
+use crate::router::Node;
 use http::StatusCode;
 use request::parse_request;
 use response::IntoResp;
@@ -97,16 +98,11 @@ pub struct AppState {
 }
 #[tokio::main]
 async fn main() -> io::Result<()> {
-    let example_file = std::fs::read_to_string("views/index.html").unwrap();
-    let my_state = AppState {
-        hello_page: example_file,
-    };
-    let router: Router<AppState> = Router::new()
-        .handle("/dasd", test_handler)
-        .await
-        .unwrap()
-        .add_state(my_state);
-    router.serve("localhost:7000".to_string()).await.unwrap();
+    let mut new_router = Node::new();
+    new_router
+        .add_handler("/".to_string(), test_handler)
+        .unwrap();
+    dbg!(new_router);
     Ok(())
 }
 pub async fn handle_conn(

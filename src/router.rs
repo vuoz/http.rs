@@ -1,7 +1,9 @@
 use crate::{response::IntoResp, Request};
 use async_std::sync::Arc;
+use std::cell::{Cell, RefCell};
 use std::io::Result;
 use std::pin::Pin;
+use std::rc::Rc;
 use std::{collections::HashMap, future::Future};
 use tokio::net::TcpListener;
 
@@ -11,40 +13,112 @@ pub type HandlerType = fn(Request) -> HandlerResponse<'static>;
 //Still need to implement the extractor for the state
 //pub type HandlerTypeExp<T> = fn(RequestWithState<T>) -> HandlerResponse<'static>;
 
-//This is an idea of a node base router and its singature. Will implement this over the next
-//commits
-pub struct RouterRoot {
-    pub root: String,
-    pub children: Option<Vec<Arc<Node>>>,
-    pub handler: HandlerType,
-}
+#[derive(Debug)]
 pub struct Node {
-    pub val: String,
-    pub next: Option<Arc<Node>>,
-    pub handler: HandlerType,
+    pub subpath: String,
+    pub children: Option<Box<Vec<Box<Node>>>>,
+    pub handler: Option<HandlerType>,
 }
-impl RouterRoot {
+impl Node {
+    pub fn new() -> Self {
+        Node {
+            subpath: "/".to_string(),
+            children: None,
+            handler: None,
+        }
+    }
     pub fn get_handler(self, path: String) -> Option<HandlerType> {
-        match self.walk(path) {
+        if path == "/" {
+            return self.handler;
+        }
+        let children = self.children;
+        match pub_walk(children, path) {
             Some(handler) => return Some(handler),
             None => return None,
         }
     }
-    pub fn add_handler(&mut self, path: String) -> Result<()> {
-        return Ok(());
+    pub fn add_handler(&mut self, path: String, handler: HandlerType) -> Result<&mut Self> {
+        if path == "/" {
+            self.handler = Some(handler);
+            return Ok(self);
+        }
+        let res = pub_walk_return_node(self, path, handler, 0);
+        if let Some(()) = res {
+            println!("returned some");
+            return Ok(self);
+        } else {
+            println!("returned none");
+            return Ok(self);
+        }
     }
-    fn walk(self, inpt: String) -> Option<HandlerType> {
-        None
+}
+fn pub_walk_return_node(node: &mut Node, path: String, func: HandlerType, i_: u32) -> Option<()> {
+    match node.children.as_mut() {
+        Some(children) => {
+            for i in 0..children.len() {
+                let child = children.get_mut(i)?;
+                if child.subpath == path {
+                    return None;
+                }
+                if path.contains(child.subpath.as_str()) {
+                    match pub_walk_return_node(child, path.clone(), func, i_) {
+                        Some(_) => (),
+                        None => (),
+                    };
+                }
+            }
+        }
+        None => {
+            let mut path_rn = node.subpath.clone();
+            let mut currnode = node;
+            let path_to_add: Vec<String> = path
+                .split(path_rn.as_str())
+                .take_while(|split| split.to_string() != "")
+                .map(|split| split.to_string())
+                .collect();
+            for i in path_to_add.into_iter() {
+                let new_node = Node {
+                    subpath: path_rn.clone() + "/" + i.as_str(),
+                    handler: None,
+                    children: None,
+                };
+                let new_sub_path = format!("{}{}", "/", i);
+                path_rn += new_sub_path.as_str();
+
+                let mut new_vec = Vec::new();
+                let box_node = Box::new(new_node);
+                new_vec.push(box_node);
+                let boxed_vec = Box::new(new_vec);
+                currnode.children = Some(boxed_vec);
+                //currnode = &mut new_node;
+            }
+        }
+    };
+
+    return None;
+}
+fn pub_walk(children: Option<Box<Vec<Box<Node>>>>, path: String) -> Option<HandlerType> {
+    if let Some(children) = children {
+        for child in children.into_iter() {
+            if child.subpath == path {
+                return child.handler;
+            }
+            if path.contains(child.subpath.as_str()) {
+                let new_children = child.children;
+                let handler = match pub_walk(new_children, path.clone()) {
+                    Some(handler) => handler,
+                    None => return None,
+                };
+                return Some(handler);
+            }
+            return None;
+        }
     }
+    None
 }
 
 #[derive(Clone, Debug)]
 pub struct Router<T: Clone> {
-    // This router isn't really capable, since it does not support any
-    // regex based routing and is not abled to nest routes.
-    // In the Future a implementation that is more like a tree structure could help with that,
-    // but that requires extractors to work since there wouldn't be any need for a such a router
-    // if you can not extract the path
     routes: HashMap<String, HandlerType>,
     fallback: Option<HandlerType>,
     state: Option<T>,
