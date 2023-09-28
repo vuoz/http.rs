@@ -1,6 +1,7 @@
 use crate::{response::IntoResp, Request};
 use async_std::sync::Arc;
 use std::cell::{Cell, RefCell};
+use std::collections::VecDeque;
 use std::io::Result;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -37,67 +38,122 @@ impl Node {
             None => return None,
         }
     }
-    pub fn add_handler(&mut self, path: String, handler: HandlerType) -> Result<&mut Self> {
+    pub fn add_handler(
+        &mut self,
+        path: String,
+        handler: HandlerType,
+    ) -> std::result::Result<&mut Self, ()> {
         if path == "/" {
             self.handler = Some(handler);
             return Ok(self);
         }
-        let res = pub_walk_return_node(self, path, handler, 0);
+        let res = pub_walk_add_node(self, path, handler);
         if let Some(()) = res {
-            println!("returned some");
             return Ok(self);
         } else {
-            println!("returned none");
             return Ok(self);
         }
     }
 }
-fn pub_walk_return_node(node: &mut Node, path: String, func: HandlerType, i_: u32) -> Option<()> {
+fn pub_walk_add_node(node: &mut Node, path: String, func: HandlerType) -> Option<()> {
     match node.children.as_mut() {
         Some(children) => {
+            let mut matches = 0;
             for i in 0..children.len() {
                 let child = children.get_mut(i)?;
                 if child.subpath == path {
-                    return None;
+                    child.handler = Some(func);
+                    return Some(());
                 }
-                if path.contains(child.subpath.as_str()) {
-                    match pub_walk_return_node(child, path.clone(), func, i_) {
-                        Some(_) => (),
-                        None => (),
+                let test_str = child.subpath.clone() + "/";
+                if path.contains(test_str.as_str()) {
+                    // This causes a bug since /wow also matches on /wowo
+                    // this is not wanted since you obv should not append to /wowo
+                    matches = matches + 1;
+
+                    match pub_walk_add_node(child, path.clone(), func) {
+                        Some(_) => return Some(()),
+                        None => return None,
                     };
                 }
             }
+            if matches == 0 {
+                match insert_node(node, path.clone(), func) {
+                    Some(_) => return Some(()),
+                    None => return None,
+                }
+            }
+            return None;
         }
         None => {
-            let mut path_rn = node.subpath.clone();
-            let mut currnode = node;
-            let path_to_add: Vec<String> = path
-                .split(path_rn.as_str())
-                .take_while(|split| split.to_string() != "")
-                .map(|split| split.to_string())
-                .collect();
-            for i in path_to_add.into_iter() {
-                let new_node = Node {
-                    subpath: path_rn.clone() + "/" + i.as_str(),
-                    handler: None,
-                    children: None,
-                };
-                let new_sub_path = format!("{}{}", "/", i);
-                path_rn += new_sub_path.as_str();
-
-                let mut new_vec = Vec::new();
-                let box_node = Box::new(new_node);
-                new_vec.push(box_node);
-                let boxed_vec = Box::new(new_vec);
-                currnode.children = Some(boxed_vec);
-                //currnode = &mut new_node;
-            }
+            match insert_node(node, path, func) {
+                Some(_) => return Some(()),
+                None => return None,
+            };
         }
-    };
+    }
+}
+fn insert_node(node: &mut Node, path: String, func: HandlerType) -> Option<()> {
+    let mut path_current = node.subpath.clone();
+    let path_test: Vec<String> = path
+        .split(path_current.as_str())
+        .map(|split| split.to_string())
+        .collect();
 
-    return None;
+    let mut new_nodes_vec: VecDeque<Node> = VecDeque::new();
+    for path in path_test.into_iter() {
+        if path == "" {
+            continue;
+        }
+        let new_path = match path_current.ends_with("/") {
+            true => path_current + path.as_str(),
+            false => path_current + "/" + path.as_str(),
+        };
+        path_current = new_path.clone();
+        let new_node = Node {
+            subpath: new_path,
+            handler: None,
+            children: None,
+        };
+
+        new_nodes_vec.push_back(new_node)
+    }
+
+    //there are some issues adding more than a double nested routes will fix in the
+    //comming commits
+    let mut finished_node = Vec::new();
+    for i in 0..new_nodes_vec.len() {
+        if i + 1 >= new_nodes_vec.len() {
+            break;
+        }
+        let mut node_1 = new_nodes_vec.pop_front()?;
+        let mut node_2 = new_nodes_vec.pop_front()?;
+        if i == new_nodes_vec.len() {
+            node_2.handler = Some(func);
+        }
+        let mut new_vec = Vec::new();
+        new_vec.push(Box::new(node_2));
+        let boxed_vec = Box::new(new_vec);
+        node_1.children = Some(boxed_vec);
+        if i == 0 {
+            let boxed_node = Box::new(node_1);
+            finished_node.push(boxed_node);
+        }
+    }
+    let last_node = finished_node.pop()?;
+    if let Some(children) = node.children.as_mut() {
+        children.push(last_node);
+        return Some(());
+    }
+    let mut new_vec = Vec::new();
+    new_vec.push(last_node);
+    let boxed_vec = Box::new(new_vec);
+    node.children = Some(boxed_vec);
+
+    Some(())
 }
 fn pub_walk(children: Option<Box<Vec<Box<Node>>>>, path: String) -> Option<HandlerType> {
+    print!("In Search");
     if let Some(children) = children {
         for child in children.into_iter() {
             if child.subpath == path {
@@ -105,11 +161,10 @@ fn pub_walk(children: Option<Box<Vec<Box<Node>>>>, path: String) -> Option<Handl
             }
             if path.contains(child.subpath.as_str()) {
                 let new_children = child.children;
-                let handler = match pub_walk(new_children, path.clone()) {
-                    Some(handler) => handler,
+                match pub_walk(new_children, path.clone()) {
+                    Some(handler) => return Some(handler),
                     None => return None,
                 };
-                return Some(handler);
             }
             return None;
         }

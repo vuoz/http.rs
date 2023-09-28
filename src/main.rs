@@ -99,8 +99,16 @@ pub struct AppState {
 #[tokio::main]
 async fn main() -> io::Result<()> {
     let mut new_router = Node::new();
-    new_router
-        .add_handler("/".to_string(), test_handler)
+    let new_router = new_router
+        .add_handler("/hi/hello".to_string(), test_handler)
+        .unwrap()
+        .add_handler("/wow/wow".to_string(), test_handler)
+        .unwrap()
+        .add_handler("/wowo/cool".to_string(), test_handler)
+        .unwrap()
+        .add_handler("/wow/well".to_string(), test_handler)
+        .unwrap()
+        .add_handler("/wow".to_string(), test_handler)
         .unwrap();
     dbg!(new_router);
     Ok(())
