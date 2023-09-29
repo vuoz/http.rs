@@ -3,6 +3,8 @@ use async_std::sync::Arc;
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 use std::io::Result;
+use std::mem::replace;
+use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
 use std::rc::Rc;
 use std::{collections::HashMap, future::Future};
@@ -14,16 +16,16 @@ pub type HandlerType = fn(Request) -> HandlerResponse<'static>;
 //Still need to implement the extractor for the state
 //pub type HandlerTypeExp<T> = fn(RequestWithState<T>) -> HandlerResponse<'static>;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Node {
     pub subpath: String,
     pub children: Option<Box<Vec<Box<Node>>>>,
     pub handler: Option<HandlerType>,
 }
 impl Node {
-    pub fn new() -> Self {
+    pub fn new(path: String) -> Self {
         Node {
-            subpath: "/".to_string(),
+            subpath: path,
             children: None,
             handler: None,
         }
@@ -42,20 +44,43 @@ impl Node {
         &mut self,
         path: String,
         handler: HandlerType,
-    ) -> std::result::Result<&mut Self, ()> {
+    ) -> std::result::Result<Box<Self>, ()> {
         if path == "/" {
             self.handler = Some(handler);
-            return Ok(self);
+            return Ok(Box::new(std::mem::take(self)));
         }
         let res = pub_walk_add_node(self, path, handler);
-        if let Some(()) = res {
-            return Ok(self);
+        if let Some(node) = res {
+            return Ok(node);
         } else {
-            return Ok(self);
+            return Ok(Box::new(std::mem::take(self)));
         }
     }
+    pub fn insert(&mut self, path: String, mut i: u32) -> Box<Node> {
+        if i == 4 {
+            return Box::new(std::mem::take(self));
+        }
+        i += 1;
+        let mut new_node = Node::new(path.clone());
+        new_node.subpath = path.clone();
+        match self.children.as_mut() {
+            Some(children) => {
+                let node = new_node.insert(path.clone(), i.clone());
+                children.push(node);
+                return Box::new(std::mem::take(self));
+            }
+            None => {
+                let node = new_node.insert(path.clone(), i.clone());
+                let mut new_vec = Vec::new();
+                new_vec.push(node);
+                let boxed_vec = Box::new(new_vec);
+                self.children = Some(boxed_vec);
+                return Box::new(std::mem::take(self));
+            }
+        };
+    }
 }
-fn pub_walk_add_node(node: &mut Node, path: String, func: HandlerType) -> Option<()> {
+fn pub_walk_add_node(node: &mut Node, path: String, func: HandlerType) -> Option<(Box<Node>)> {
     match node.children.as_mut() {
         Some(children) => {
             let mut matches = 0;
@@ -63,7 +88,7 @@ fn pub_walk_add_node(node: &mut Node, path: String, func: HandlerType) -> Option
                 let child = children.get_mut(i)?;
                 if child.subpath == path {
                     child.handler = Some(func);
-                    return Some(());
+                    return Some(Box::new(std::mem::take(node)));
                 }
                 let test_str = child.subpath.clone() + "/";
                 if path.contains(test_str.as_str()) {
@@ -72,88 +97,25 @@ fn pub_walk_add_node(node: &mut Node, path: String, func: HandlerType) -> Option
                     matches = matches + 1;
 
                     match pub_walk_add_node(child, path.clone(), func) {
-                        Some(_) => return Some(()),
+                        Some(node) => return Some(node),
                         None => return None,
                     };
                 }
             }
             if matches == 0 {
-                match insert_node(node, path.clone(), func) {
-                    Some(_) => return Some(()),
-                    None => return None,
-                }
+                let node = node.insert(path, 0);
+                return Some(node);
             }
             return None;
         }
         None => {
-            match insert_node(node, path, func) {
-                Some(_) => return Some(()),
-                None => return None,
-            };
+            let node = node.insert(path, 0);
+            return Some(node);
         }
     }
 }
-fn insert_node(node: &mut Node, path: String, func: HandlerType) -> Option<()> {
-    let mut path_current = node.subpath.clone();
-    let path_test: Vec<String> = path
-        .split(path_current.as_str())
-        .map(|split| split.to_string())
-        .collect();
 
-    let mut new_nodes_vec: VecDeque<Node> = VecDeque::new();
-    for path in path_test.into_iter() {
-        if path == "" {
-            continue;
-        }
-        let new_path = match path_current.ends_with("/") {
-            true => path_current + path.as_str(),
-            false => path_current + "/" + path.as_str(),
-        };
-        path_current = new_path.clone();
-        let new_node = Node {
-            subpath: new_path,
-            handler: None,
-            children: None,
-        };
-
-        new_nodes_vec.push_back(new_node)
-    }
-
-    //there are some issues adding more than a double nested routes will fix in the
-    //comming commits
-    let mut finished_node = Vec::new();
-    for i in 0..new_nodes_vec.len() {
-        if i + 1 >= new_nodes_vec.len() {
-            break;
-        }
-        let mut node_1 = new_nodes_vec.pop_front()?;
-        let mut node_2 = new_nodes_vec.pop_front()?;
-        if i == new_nodes_vec.len() {
-            node_2.handler = Some(func);
-        }
-        let mut new_vec = Vec::new();
-        new_vec.push(Box::new(node_2));
-        let boxed_vec = Box::new(new_vec);
-        node_1.children = Some(boxed_vec);
-        if i == 0 {
-            let boxed_node = Box::new(node_1);
-            finished_node.push(boxed_node);
-        }
-    }
-    let last_node = finished_node.pop()?;
-    if let Some(children) = node.children.as_mut() {
-        children.push(last_node);
-        return Some(());
-    }
-    let mut new_vec = Vec::new();
-    new_vec.push(last_node);
-    let boxed_vec = Box::new(new_vec);
-    node.children = Some(boxed_vec);
-
-    Some(())
-}
 fn pub_walk(children: Option<Box<Vec<Box<Node>>>>, path: String) -> Option<HandlerType> {
-    print!("In Search");
     if let Some(children) = children {
         for child in children.into_iter() {
             if child.subpath == path {
