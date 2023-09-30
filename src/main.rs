@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use std::io;
 
 use std::sync::Arc;
+use std::thread::panicking;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
@@ -85,6 +86,7 @@ fn test_handler(req: Request) -> HandlerResponse<'static> {
         response
     })
 }
+
 fn test_handler_with_state(req: RequestWithState<AppState>) -> HandlerResponse<'static> {
     Box::pin(async move {
         let response: Box<dyn IntoResp + Send> = Box::new((StatusCode::OK, "asdasda".to_string()));
@@ -105,10 +107,59 @@ async fn main() -> io::Result<()> {
         .add_handler("/hello/cool".to_string(), test_handler)
         .unwrap()
         .add_handler("/wo/yo/cool".to_string(), test_handler)
+        .unwrap()
+        .add_handler("/user".to_string(), test_handler)
         .unwrap();
-
     dbg!(&new_router);
-    Ok(())
+    let leaked_router = Box::leak(new_router);
+    leaked_router.serve("localhost:4000".to_string()).await;
+
+    loop {}
+}
+
+pub async fn handle_conn_node_based(
+    mut socket: TcpStream,
+    handlers: &Node,
+    fallback: Option<HandlerType>,
+) -> std::io::Result<()> {
+    let mut buf = [0; 1024];
+    socket.read(&mut buf).await?;
+    let req_str = String::from_utf8_lossy(&buf[..]);
+    let request = match parse_request(req_str) {
+        Ok(request) => request,
+        Err(_) => {
+            let res = StatusCode::INTERNAL_SERVER_ERROR.into_response();
+            socket.write(res.as_bytes()).await?;
+            socket.flush().await?;
+            return Ok(());
+        }
+    };
+
+    let handler = match handlers.get_handler(request.metadata.path.clone()) {
+        Some(handler) => handler,
+        None => match fallback {
+            Some(fallback) => {
+                let res = fallback(request).await;
+                let resp = res.into_response();
+                socket.write(resp.as_bytes()).await?;
+                socket.flush().await?;
+                return Ok(());
+            }
+            None => {
+                let res = StatusCode::NOT_FOUND.into_response();
+                socket.write(res.as_bytes()).await?;
+                socket.flush().await?;
+                return Ok(());
+            }
+        },
+    };
+    let res = handler(request).await;
+    let response = res.into_response();
+    let clone = response.clone();
+    socket.write(clone.as_bytes()).await?;
+    socket.flush().await?;
+
+    return Ok(());
 }
 pub async fn handle_conn(
     mut socket: TcpStream,

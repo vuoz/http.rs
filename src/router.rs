@@ -30,12 +30,31 @@ impl Node {
             handler: None,
         }
     }
-    pub fn get_handler(self, path: String) -> Option<HandlerType> {
+    pub async fn serve(&'static self, addr: String) -> ! {
+        let listener = match TcpListener::bind(addr).await {
+            Ok(listener) => listener,
+            Err(e) => panic!("Cannot create listener Error: {e} "),
+        };
+        loop {
+            let (socket, _) = match listener.accept().await {
+                Ok((socket, other_thing)) => (socket, other_thing),
+                Err(e) => panic!("Canot accept connection Error: {e}"),
+            };
+            tokio::spawn(async move {
+                match crate::handle_conn_node_based(socket, &self, None).await {
+                    Ok(_) => (),
+                    Err(e) => {
+                        panic!("Cannot handle incomming connection: {e}")
+                    }
+                };
+            });
+        }
+    }
+    pub fn get_handler(&self, path: String) -> Option<HandlerType> {
         if path == "/" {
             return self.handler;
         }
-        let children = self.children;
-        match pub_walk(children, path) {
+        match pub_walk(&self.children, path) {
             Some(handler) => return Some(handler),
             None => return None,
         }
@@ -157,14 +176,14 @@ fn pub_walk_add_node(node: &mut Node, path: String, func: HandlerType) -> Option
     }
 }
 
-fn pub_walk(children: Option<Box<Vec<Box<Node>>>>, path: String) -> Option<HandlerType> {
+fn pub_walk(children: &Option<Box<Vec<Box<Node>>>>, path: String) -> Option<HandlerType> {
     if let Some(children) = children {
-        for child in children.into_iter() {
+        for child in children.as_ref().into_iter() {
             if child.subpath == path {
                 return child.handler;
             }
             if path.contains(child.subpath.as_str()) {
-                let new_children = child.children;
+                let new_children = &child.children;
                 match pub_walk(new_children, path.clone()) {
                     Some(handler) => return Some(handler),
                     None => return None,
