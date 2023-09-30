@@ -1,9 +1,7 @@
 # http.rs
 
 
-This is an implementation  
-of a http framework  
-in rust.  
+Just another web framework but in rust
 
 ## Goals
 * Understand the Http Protocol  
@@ -21,3 +19,6 @@ like to simplify the creation of handlers
 * Might want to implement a thread pool instead of spawning a new thread  
 for every request  
 * Middleware  
+
+### Notes
+* This is not made for production applications

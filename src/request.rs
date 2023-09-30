@@ -5,7 +5,11 @@ use crate::parse::parse_method_line;
 use crate::Body;
 use std::borrow::Cow;
 use std::collections::HashMap;
-
+#[derive(Clone, Debug)]
+pub struct RouteExtract {
+    pub identifier: String,
+    pub value: String,
+}
 use crate::Request;
 pub enum ParseError {
     Empty,
@@ -55,6 +59,7 @@ pub fn parse_request(req_str: Cow<'_, str>) -> Result<Request, ParseError> {
                 metadata: req_metadata.clone(),
                 body: Some(body),
                 headers: headers.clone(),
+                extract: None,
             }
         }
         None => {
@@ -62,6 +67,7 @@ pub fn parse_request(req_str: Cow<'_, str>) -> Result<Request, ParseError> {
                 metadata: req_metadata.clone(),
                 body: None,
                 headers,
+                extract: None,
             };
             req
         }

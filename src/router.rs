@@ -1,3 +1,5 @@
+use crate::request::RouteExtract;
+
 use crate::{response::IntoResp, Request};
 use async_std::sync::Arc;
 use std::cell::{Cell, RefCell};
@@ -15,7 +17,10 @@ pub type HandlerResponse<'a> = Pin<Box<dyn Future<Output = Box<dyn IntoResp + Se
 pub type HandlerType = fn(Request) -> HandlerResponse<'static>;
 //Still need to implement the extractor for the state
 //pub type HandlerTypeExp<T> = fn(RequestWithState<T>) -> HandlerResponse<'static>;
-
+pub struct RoutingResult {
+    pub handler: HandlerType,
+    pub extract: Option<RouteExtract>,
+}
 #[derive(Debug, Default)]
 pub struct Node {
     pub subpath: String,
@@ -50,9 +55,17 @@ impl Node {
             });
         }
     }
-    pub fn get_handler(&self, path: String) -> Option<HandlerType> {
+    pub fn get_handler(&self, path: String) -> Option<RoutingResult> {
         if path == "/" {
-            return self.handler;
+            match self.handler {
+                Some(handler) => {
+                    return Some(RoutingResult {
+                        handler,
+                        extract: None,
+                    })
+                }
+                None => return None,
+            }
         }
         match pub_walk(&self.children, path) {
             Some(handler) => return Some(handler),
@@ -176,11 +189,60 @@ fn pub_walk_add_node(node: &mut Node, path: String, func: HandlerType) -> Option
     }
 }
 
-fn pub_walk(children: &Option<Box<Vec<Box<Node>>>>, path: String) -> Option<HandlerType> {
+fn pub_walk(children: &Option<Box<Vec<Box<Node>>>>, path: String) -> Option<RoutingResult> {
     if let Some(children) = children {
         for child in children.as_ref().into_iter() {
+            if child.subpath.contains(":") {
+                let splits: Vec<String> = child
+                    .subpath
+                    .split(":")
+                    .map(|split| split.to_string())
+                    .collect();
+                if splits.len() != 2 {
+                    continue;
+                }
+                // This is the identifier to the extract. For instance if we registered the route
+                // /user/:id then split by ":"  at index 0 we get the path before the ":" and at index 1 the identifier
+                // or how the user should be abled to extract it in his handler
+                let identifier = splits.get(1)?;
+                let path_before = splits.get(0)?;
+                if path.contains(path_before) {
+                    let values_split: Vec<String> = path
+                        .split(path_before)
+                        .map(|split| split.to_string())
+                        .collect();
+                    if values_split.len() != 2 {
+                        continue;
+                    }
+                    let value = values_split.get(1)?;
+                    // This will likely become a HashMap since we
+                    // want to have to ability to handle multiple extractors
+                    let new_extract = RouteExtract {
+                        value: value.clone(),
+                        identifier: identifier.clone(),
+                    };
+                    match child.handler {
+                        Some(handler) => {
+                            return Some(RoutingResult {
+                                handler,
+                                extract: Some(new_extract),
+                            })
+                        }
+                        None => (),
+                    }
+                    println!("In here found the path  ident: {}", identifier);
+                }
+            }
             if child.subpath == path {
-                return child.handler;
+                match child.handler {
+                    Some(handler) => {
+                        return Some(RoutingResult {
+                            handler,
+                            extract: None,
+                        })
+                    }
+                    None => (),
+                }
             }
             if path.contains(child.subpath.as_str()) {
                 let new_children = &child.children;

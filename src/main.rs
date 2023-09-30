@@ -5,6 +5,7 @@ pub mod router;
 use crate::router::Node;
 use http::StatusCode;
 use request::parse_request;
+use request::RouteExtract;
 use response::IntoResp;
 use router::HandlerResponse;
 use router::HandlerType;
@@ -37,7 +38,7 @@ pub enum Body {
     Text(String),
     None,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ContentType {
     Json(String),
     UrlEncoded(HashMap<String, String>),
@@ -62,9 +63,14 @@ pub struct MetaData {
     pub path: String,
     pub version: String,
 }
-#[derive(Debug)]
+// Might change the request to be called ctx in the future
+// since it now holds more that just plain request data.
+// Also since state still needs to be added to this struct
+#[derive(Debug, Clone)]
 pub struct Request {
     pub metadata: MetaData,
+    // Could also make the Extract a HashMap
+    pub extract: Option<RouteExtract>,
     pub body: Option<ContentType>,
     pub headers: HashMap<String, String>,
 }
@@ -86,11 +92,16 @@ fn test_handler(req: Request) -> HandlerResponse<'static> {
         response
     })
 }
-
-fn test_handler_with_state(req: RequestWithState<AppState>) -> HandlerResponse<'static> {
+fn test_handler_user(req: Request) -> HandlerResponse<'static> {
     Box::pin(async move {
-        let response: Box<dyn IntoResp + Send> = Box::new((StatusCode::OK, "asdasda".to_string()));
-        response
+        let user = match req.extract {
+            Some(user) => user.value,
+            None => "None".to_string(),
+        };
+        let returnmsg = "Hello ".to_string() + user.as_str();
+        // using the "as" makes this almost usable :()
+        // will still try to implement a solution that abstracts this from the user
+        Box::new((StatusCode::OK, returnmsg)) as Box<dyn IntoResp + Send>
     })
 }
 
@@ -108,9 +119,9 @@ async fn main() -> io::Result<()> {
         .unwrap()
         .add_handler("/wo/yo/cool".to_string(), test_handler)
         .unwrap()
-        .add_handler("/user".to_string(), test_handler)
+        .add_handler("/user/:id".to_string(), test_handler_user)
         .unwrap();
-    //dbg!(&new_router);
+    dbg!(&new_router_2);
     let leaked_router = Box::leak(new_router_2);
     leaked_router.serve("localhost:4000".to_string()).await;
     Ok(())
@@ -124,7 +135,7 @@ pub async fn handle_conn_node_based(
     let mut buf = [0; 1024];
     socket.read(&mut buf).await?;
     let req_str = String::from_utf8_lossy(&buf[..]);
-    let request = match parse_request(req_str) {
+    let mut request = match parse_request(req_str) {
         Ok(request) => request,
         Err(_) => {
             let res = StatusCode::INTERNAL_SERVER_ERROR.into_response();
@@ -134,8 +145,8 @@ pub async fn handle_conn_node_based(
         }
     };
 
-    let handler = match handlers.get_handler(request.metadata.path.clone()) {
-        Some(handler) => handler,
+    let routing_res = match handlers.get_handler(request.metadata.path.clone()) {
+        Some(res) => res,
         None => match fallback {
             Some(fallback) => {
                 let res = fallback(request).await;
@@ -152,6 +163,10 @@ pub async fn handle_conn_node_based(
             }
         },
     };
+    let handler = routing_res.handler;
+    if let Some(extract) = routing_res.extract {
+        request.extract = Some(extract);
+    }
     let res = handler(request).await;
     let response = res.into_response();
     let clone = response.clone();
