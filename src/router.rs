@@ -56,21 +56,61 @@ impl Node {
             return Ok(Box::new(std::mem::take(self)));
         }
     }
-    pub fn insert(&mut self, path: String, mut i: u32) -> Box<Node> {
-        if i == 4 {
+    pub fn insert(&mut self, path: String, pathRn: String, func: HandlerType) -> Box<Node> {
+        //This is the base case when the path is reached the node is returned
+        if path == pathRn {
+            self.handler = Some(func);
             return Box::new(std::mem::take(self));
         }
-        i += 1;
-        let mut new_node = Node::new(path.clone());
-        new_node.subpath = path.clone();
+
+        let path_for_new_node = match pathRn.as_str() {
+            "/" => {
+                let splits: Vec<String> = path.split("/").map(|split| split.to_string()).collect();
+                let mut to_add = String::new();
+                for i in splits.into_iter() {
+                    if i == "" {
+                        continue;
+                    }
+                    to_add = i.clone();
+                    break;
+                }
+                let final_str = "/".to_string() + to_add.as_str();
+                final_str
+            }
+            _ => {
+                let missing_part_of_path = path.replace(pathRn.clone().as_str(), "").to_string();
+
+                let splits: Vec<String> = missing_part_of_path
+                    .split("/")
+                    .map(|split| split.to_string())
+                    .collect();
+                let mut to_add_to_curr = String::new();
+                for i in splits.into_iter() {
+                    if i == "" {
+                        continue;
+                    }
+                    to_add_to_curr = i.clone();
+                    break;
+                }
+                let mut final_path = match pathRn.ends_with("/") {
+                    false => pathRn.clone() + "/" + to_add_to_curr.as_str(),
+                    true => pathRn.clone() + to_add_to_curr.as_str(),
+                };
+                if to_add_to_curr == "" {
+                    final_path = missing_part_of_path;
+                }
+                final_path
+            }
+        };
+        let mut new_node = Node::new(path_for_new_node.clone());
         match self.children.as_mut() {
             Some(children) => {
-                let node = new_node.insert(path.clone(), i.clone());
+                let node = new_node.insert(path.clone(), path_for_new_node.clone(), func);
                 children.push(node);
                 return Box::new(std::mem::take(self));
             }
             None => {
-                let node = new_node.insert(path.clone(), i.clone());
+                let node = new_node.insert(path.clone(), path_for_new_node.clone(), func);
                 let mut new_vec = Vec::new();
                 new_vec.push(node);
                 let boxed_vec = Box::new(new_vec);
@@ -103,13 +143,15 @@ fn pub_walk_add_node(node: &mut Node, path: String, func: HandlerType) -> Option
                 }
             }
             if matches == 0 {
-                let node = node.insert(path, 0);
+                let node_path_curr = node.subpath.clone();
+                let node = node.insert(path, node_path_curr, func);
                 return Some(node);
             }
             return None;
         }
         None => {
-            let node = node.insert(path, 0);
+            let node_path_curr = node.subpath.clone();
+            let node = node.insert(path, node_path_curr, func);
             return Some(node);
         }
     }

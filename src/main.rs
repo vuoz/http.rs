@@ -102,15 +102,12 @@ async fn main() -> io::Result<()> {
     let new_router = new_router
         .add_handler("/hi/hello".to_string(), test_handler)
         .unwrap()
-        .add_handler("/wow/wow".to_string(), test_handler)
+        .add_handler("/hello/cool".to_string(), test_handler)
         .unwrap()
-        .add_handler("/wowo/cool".to_string(), test_handler)
-        .unwrap()
-        .add_handler("/wow/well".to_string(), test_handler)
-        .unwrap()
-        .add_handler("/wow".to_string(), test_handler)
+        .add_handler("/wo/yo/cool".to_string(), test_handler)
         .unwrap();
-    dbg!(new_router);
+
+    dbg!(&new_router);
     Ok(())
 }
 pub async fn handle_conn(
