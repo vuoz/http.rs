@@ -113,8 +113,7 @@ async fn main() -> io::Result<()> {
     //dbg!(&new_router);
     let leaked_router = Box::leak(new_router_2);
     leaked_router.serve("localhost:4000".to_string()).await;
-
-    loop {}
+    Ok(())
 }
 
 pub async fn handle_conn_node_based(
