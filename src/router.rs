@@ -186,10 +186,9 @@ fn pub_walk(children: &Option<Box<Vec<Box<Node>>>>, path: String) -> Option<Hand
                 let new_children = &child.children;
                 match pub_walk(new_children, path.clone()) {
                     Some(handler) => return Some(handler),
-                    None => return None,
+                    None => (),
                 };
             }
-            return None;
         }
     }
     None

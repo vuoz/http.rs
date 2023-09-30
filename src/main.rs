@@ -101,7 +101,7 @@ pub struct AppState {
 #[tokio::main]
 async fn main() -> io::Result<()> {
     let mut new_router = Node::new("/".to_string());
-    let new_router = new_router
+    let new_router_2 = new_router
         .add_handler("/hi/hello".to_string(), test_handler)
         .unwrap()
         .add_handler("/hello/cool".to_string(), test_handler)
@@ -110,8 +110,8 @@ async fn main() -> io::Result<()> {
         .unwrap()
         .add_handler("/user".to_string(), test_handler)
         .unwrap();
-    dbg!(&new_router);
-    let leaked_router = Box::leak(new_router);
+    //dbg!(&new_router);
+    let leaked_router = Box::leak(new_router_2);
     leaked_router.serve("localhost:4000".to_string()).await;
 
     loop {}
