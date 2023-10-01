@@ -14,7 +14,7 @@ Just another web framework but in rust
 * Fix bugs in the rucursive addition and traversal of Nodes  
 * Even tho already metioned I want to highlight that I would  
 like to simplify the creation of handlers  
-* Make a state extractor so that handler can use state  
+* Make a state extractor so that handler can use state [x] 
 * Find a better name  
 * Might want to implement a thread pool instead of spawning a new thread  
 for every request  
