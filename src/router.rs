@@ -2,6 +2,7 @@ use crate::request::RouteExtract;
 
 use crate::{response::IntoResp, Request};
 use async_std::sync::Arc;
+use http::StatusCode;
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 use std::io::Result;
@@ -15,25 +16,63 @@ use tokio::net::TcpListener;
 pub type HandlerResponse<'a> = Pin<Box<dyn Future<Output = Box<dyn IntoResp + Send>> + Send + 'a>>;
 
 pub type HandlerType = fn(Request) -> HandlerResponse<'static>;
-//Still need to implement the extractor for the state
-//pub type HandlerTypeExp<T> = fn(RequestWithState<T>) -> HandlerResponse<'static>;
-pub struct RoutingResult {
-    pub handler: HandlerType,
+pub type HandlerTypeState<T> = fn(Request, T) -> HandlerResponse<'static>;
+#[derive(Debug, Default, Clone, Copy)]
+pub enum Handler<T: std::clone::Clone + std::marker::Copy> {
+    #[default]
+    None,
+    Without(HandlerType),
+    WithState(HandlerTypeState<T>),
+}
+impl<T: std::clone::Clone + std::marker::Copy> Handler<T>
+where
+    T: Clone,
+{
+    pub async fn handle(self, req: Request, state: Option<T>) -> Option<Box<dyn IntoResp + Send>> {
+        match self {
+            Handler::Without(func) => Some(func(req).await),
+            Handler::WithState(func) => match state {
+                Some(state) => Some(func(req, state).await),
+                None => Some(Box::new((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Missing state".to_string(),
+                )) as Box<dyn IntoResp + Send>),
+            },
+            Self::None => None,
+        }
+    }
+}
+
+pub struct RoutingResult<T: std::clone::Clone + std::marker::Copy> {
+    pub handler: Handler<T>,
     pub extract: Option<RouteExtract>,
 }
 #[derive(Debug, Default)]
-pub struct Node {
+pub struct Node<T: Clone + Default + Send + std::marker::Copy + std::marker::Sync> {
     pub subpath: String,
-    pub children: Option<Box<Vec<Box<Node>>>>,
-    pub handler: Option<HandlerType>,
+    pub children: Option<Box<Vec<Box<Node<T>>>>>,
+    pub handler: Option<Handler<T>>,
+    pub state: Option<T>,
 }
-impl Node {
+impl<T> Node<T>
+where
+    T: Sync,
+    T: Clone,
+    T: Default,
+    T: Send,
+    T: Copy,
+{
     pub fn new(path: String) -> Self {
         Node {
             subpath: path,
             children: None,
             handler: None,
+            state: None,
         }
+    }
+    pub fn add_state(&mut self, state: &mut T) -> Self {
+        self.state = Some(*state);
+        return std::mem::take(self);
     }
     pub async fn serve(&'static self, addr: String) -> ! {
         let listener = match TcpListener::bind(addr).await {
@@ -46,7 +85,7 @@ impl Node {
                 Err(e) => panic!("Canot accept connection Error: {e}"),
             };
             tokio::spawn(async move {
-                match crate::handle_conn_node_based(socket, &self, None).await {
+                match crate::handle_conn_node_based(socket, &self, None, self.state.clone()).await {
                     Ok(_) => (),
                     Err(e) => {
                         panic!("Cannot handle incomming connection: {e}")
@@ -55,12 +94,12 @@ impl Node {
             });
         }
     }
-    pub fn get_handler(&self, path: String) -> Option<RoutingResult> {
+    pub fn get_handler(&self, path: String) -> Option<RoutingResult<T>> {
         if path == "/" {
-            match self.handler {
+            match &self.handler {
                 Some(handler) => {
                     return Some(RoutingResult {
-                        handler,
+                        handler: handler.clone(),
                         extract: None,
                     })
                 }
@@ -75,7 +114,7 @@ impl Node {
     pub fn add_handler(
         &mut self,
         path: String,
-        handler: HandlerType,
+        handler: Handler<T>,
     ) -> std::result::Result<Box<Self>, ()> {
         if path == "/" {
             self.handler = Some(handler);
@@ -88,7 +127,7 @@ impl Node {
             return Ok(Box::new(std::mem::take(self)));
         }
     }
-    pub fn insert(&mut self, path: String, pathRn: String, func: HandlerType) -> Box<Node> {
+    pub fn insert(&mut self, path: String, pathRn: String, func: Handler<T>) -> Box<Node<T>> {
         //This is the base case when the path is reached the node is returned
         if path == pathRn {
             self.handler = Some(func);
@@ -152,7 +191,17 @@ impl Node {
         };
     }
 }
-fn pub_walk_add_node(node: &mut Node, path: String, func: HandlerType) -> Option<(Box<Node>)> {
+fn pub_walk_add_node<
+    T: std::default::Default
+        + std::clone::Clone
+        + std::marker::Send
+        + std::marker::Copy
+        + std::marker::Sync,
+>(
+    node: &mut Node<T>,
+    path: String,
+    func: Handler<T>,
+) -> Option<(Box<Node<T>>)> {
     match node.children.as_mut() {
         Some(children) => {
             let mut matches = 0;
@@ -189,7 +238,16 @@ fn pub_walk_add_node(node: &mut Node, path: String, func: HandlerType) -> Option
     }
 }
 
-fn pub_walk(children: &Option<Box<Vec<Box<Node>>>>, path: String) -> Option<RoutingResult> {
+fn pub_walk<
+    T: std::default::Default
+        + std::clone::Clone
+        + std::marker::Send
+        + std::marker::Copy
+        + std::marker::Sync,
+>(
+    children: &Option<Box<Vec<Box<Node<T>>>>>,
+    path: String,
+) -> Option<RoutingResult<T>> {
     if let Some(children) = children {
         for child in children.as_ref().into_iter() {
             if child.subpath.contains(":") {

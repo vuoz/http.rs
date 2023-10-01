@@ -11,6 +11,7 @@ use router::HandlerResponse;
 use router::HandlerType;
 use router::Router;
 use std::collections::HashMap;
+use std::hash::Hash;
 use std::io;
 
 use std::sync::Arc;
@@ -104,33 +105,60 @@ fn test_handler_user(req: Request) -> HandlerResponse<'static> {
         Box::new((StatusCode::OK, returnmsg)) as Box<dyn IntoResp + Send>
     })
 }
+fn test_handler_user_state(req: Request, state: AppState<'static>) -> HandlerResponse<'static> {
+    Box::pin(async move {
+        let user = match req.extract {
+            Some(user) => user.value,
+            None => "None".to_string(),
+        };
+        let returnmsg = state.hello_page;
+        let res = returnmsg.replace("{user}", &user);
+        let mut headers = HashMap::new();
+        headers.insert("Content-type".to_string(), "text/html".to_string());
 
-#[derive(Clone, Debug)]
-pub struct AppState {
-    pub hello_page: String,
+        // using the "as" makes this almost usable :()
+        // will still try to implement a solution that abstracts this from the user
+        Box::new((StatusCode::OK, headers, res)) as Box<dyn IntoResp + Send>
+    })
+}
+
+#[derive(Clone, Debug, Default, Copy)]
+pub struct AppState<'a> {
+    pub hello_page: &'a str,
 }
 #[tokio::main]
 async fn main() -> io::Result<()> {
-    let mut new_router = Node::new("/".to_string());
+    let file = std::fs::read_to_string("views/index.html").unwrap();
+    let file_leaked = Box::leak(Box::new(file));
+    let app_state = AppState {
+        hello_page: file_leaked,
+    };
+    let app_state_leaked = Box::leak(Box::new(app_state));
+    let mut new_router: Node<AppState> = Node::new("/".to_string());
     let new_router_2 = new_router
-        .add_handler("/hi/hello".to_string(), test_handler)
+        .add_handler(
+            "/over/:user".to_string(),
+            router::Handler::WithState(test_handler_user_state),
+        )
         .unwrap()
-        .add_handler("/hello/cool".to_string(), test_handler)
-        .unwrap()
-        .add_handler("/wo/yo/cool".to_string(), test_handler)
-        .unwrap()
-        .add_handler("/user/:id".to_string(), test_handler_user)
-        .unwrap();
-    dbg!(&new_router_2);
-    let leaked_router = Box::leak(new_router_2);
+        .add_state(app_state_leaked);
+    let boxed_router = Box::new(new_router_2);
+    let leaked_router = Box::leak(boxed_router);
     leaked_router.serve("localhost:4000".to_string()).await;
     Ok(())
 }
 
-pub async fn handle_conn_node_based(
+pub async fn handle_conn_node_based<
+    T: std::clone::Clone
+        + std::default::Default
+        + std::marker::Send
+        + std::marker::Copy
+        + std::marker::Sync,
+>(
     mut socket: TcpStream,
-    handlers: &Node,
+    handlers: &Node<T>,
     fallback: Option<HandlerType>,
+    state: Option<T>,
 ) -> std::io::Result<()> {
     let mut buf = [0; 1024];
     socket.read(&mut buf).await?;
@@ -167,7 +195,15 @@ pub async fn handle_conn_node_based(
     if let Some(extract) = routing_res.extract {
         request.extract = Some(extract);
     }
-    let res = handler(request).await;
+    let res = match handler.handle(request, state).await {
+        Some(res) => res,
+        None => {
+            let res = StatusCode::NOT_FOUND.into_response();
+            socket.write(res.as_bytes()).await?;
+            socket.flush().await?;
+            return Ok(());
+        }
+    };
     let response = res.into_response();
     let clone = response.clone();
     socket.write(clone.as_bytes()).await?;
