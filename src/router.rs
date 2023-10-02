@@ -9,7 +9,6 @@ use std::io::Result;
 use std::mem::replace;
 use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
-use std::rc::Rc;
 use std::{collections::HashMap, future::Future};
 use tokio::net::TcpListener;
 
@@ -18,13 +17,13 @@ pub type HandlerResponse<'a> = Pin<Box<dyn Future<Output = Box<dyn IntoResp + Se
 pub type HandlerType = fn(Request) -> HandlerResponse<'static>;
 pub type HandlerTypeState<T> = fn(Request, T) -> HandlerResponse<'static>;
 #[derive(Debug, Default, Clone, Copy)]
-pub enum Handler<T: std::clone::Clone + std::marker::Copy> {
+pub enum Handler<T: std::clone::Clone> {
     #[default]
     None,
     Without(HandlerType),
     WithState(HandlerTypeState<T>),
 }
-impl<T: std::clone::Clone + std::marker::Copy> Handler<T>
+impl<T: std::clone::Clone> Handler<T>
 where
     T: Clone,
 {
@@ -43,12 +42,12 @@ where
     }
 }
 
-pub struct RoutingResult<T: std::clone::Clone + std::marker::Copy> {
+pub struct RoutingResult<T: std::clone::Clone> {
     pub handler: Handler<T>,
     pub extract: Option<RouteExtract>,
 }
 #[derive(Debug, Default)]
-pub struct Node<T: Clone + Default + Send + std::marker::Copy + std::marker::Sync> {
+pub struct Node<T: Clone + Default + Send + std::marker::Sync> {
     pub subpath: String,
     pub children: Option<Box<Vec<Box<Node<T>>>>>,
     pub handler: Option<Handler<T>>,
@@ -60,7 +59,6 @@ where
     T: Clone,
     T: Default,
     T: Send,
-    T: Copy,
 {
     pub fn new(path: String) -> Self {
         Node {
@@ -70,8 +68,8 @@ where
             state: None,
         }
     }
-    pub fn add_state(&mut self, state: &mut T) -> Self {
-        self.state = Some(*state);
+    pub fn add_state(&mut self, state: T) -> Self {
+        self.state = Some(state);
         return std::mem::take(self);
     }
     pub async fn serve(&'static self, addr: String) -> ! {
@@ -192,11 +190,7 @@ where
     }
 }
 fn pub_walk_add_node<
-    T: std::default::Default
-        + std::clone::Clone
-        + std::marker::Send
-        + std::marker::Copy
-        + std::marker::Sync,
+    T: std::default::Default + std::clone::Clone + std::marker::Send + std::marker::Sync,
 >(
     node: &mut Node<T>,
     path: String,
@@ -239,11 +233,7 @@ fn pub_walk_add_node<
 }
 
 fn pub_walk<
-    T: std::default::Default
-        + std::clone::Clone
-        + std::marker::Send
-        + std::marker::Copy
-        + std::marker::Sync,
+    T: std::default::Default + std::clone::Clone + std::marker::Send + std::marker::Sync,
 >(
     children: &Option<Box<Vec<Box<Node<T>>>>>,
     path: String,
@@ -279,10 +269,10 @@ fn pub_walk<
                         value: value.clone(),
                         identifier: identifier.clone(),
                     };
-                    match child.handler {
+                    match &child.handler {
                         Some(handler) => {
                             return Some(RoutingResult {
-                                handler,
+                                handler: handler.clone(),
                                 extract: Some(new_extract),
                             })
                         }
@@ -292,10 +282,10 @@ fn pub_walk<
                 }
             }
             if child.subpath == path {
-                match child.handler {
+                match &child.handler {
                     Some(handler) => {
                         return Some(RoutingResult {
-                            handler,
+                            handler: handler.clone(),
                             extract: None,
                         })
                     }

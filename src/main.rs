@@ -9,13 +9,10 @@ use request::RouteExtract;
 use response::IntoResp;
 use router::HandlerResponse;
 use router::HandlerType;
-use router::Router;
 use std::collections::HashMap;
-use std::hash::Hash;
 use std::io;
 
 use std::sync::Arc;
-use std::thread::panicking;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
@@ -105,7 +102,7 @@ fn test_handler_user(req: Request) -> HandlerResponse<'static> {
         Box::new((StatusCode::OK, returnmsg)) as Box<dyn IntoResp + Send>
     })
 }
-fn test_handler_user_state(req: Request, state: AppState<'static>) -> HandlerResponse<'static> {
+fn test_handler_user_state(req: Request, state: AppState) -> HandlerResponse<'static> {
     Box::pin(async move {
         let user = match req.extract {
             Some(user) => user.value,
@@ -122,18 +119,14 @@ fn test_handler_user_state(req: Request, state: AppState<'static>) -> HandlerRes
     })
 }
 
-#[derive(Clone, Debug, Default, Copy)]
-pub struct AppState<'a> {
-    pub hello_page: &'a str,
+#[derive(Clone, Debug, Default)]
+pub struct AppState {
+    pub hello_page: String,
 }
 #[tokio::main]
 async fn main() -> io::Result<()> {
     let file = std::fs::read_to_string("views/index.html").unwrap();
-    let file_leaked = Box::leak(Box::new(file));
-    let app_state = AppState {
-        hello_page: file_leaked,
-    };
-    let app_state_leaked = Box::leak(Box::new(app_state));
+    let app_state = AppState { hello_page: file };
     let mut new_router: Node<AppState> = Node::new("/".to_string());
     let new_router_2 = new_router
         .add_handler(
@@ -141,7 +134,7 @@ async fn main() -> io::Result<()> {
             router::Handler::WithState(test_handler_user_state),
         )
         .unwrap()
-        .add_state(app_state_leaked);
+        .add_state(app_state);
     let boxed_router = Box::new(new_router_2);
     let leaked_router = Box::leak(boxed_router);
     leaked_router.serve("localhost:4000".to_string()).await;
@@ -149,11 +142,7 @@ async fn main() -> io::Result<()> {
 }
 
 pub async fn handle_conn_node_based<
-    T: std::clone::Clone
-        + std::default::Default
-        + std::marker::Send
-        + std::marker::Copy
-        + std::marker::Sync,
+    T: std::clone::Clone + std::default::Default + std::marker::Send + std::marker::Sync,
 >(
     mut socket: TcpStream,
     handlers: &Node<T>,
