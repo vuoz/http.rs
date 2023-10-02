@@ -118,20 +118,40 @@ fn test_handler_user_state(req: Request, state: AppState) -> HandlerResponse<'st
         Box::new((StatusCode::OK, headers, res)) as Box<dyn IntoResp + Send>
     })
 }
+fn test_handler_bytes_state(req: Request, state: AppState) -> HandlerResponse<'static> {
+    Box::pin(async move {
+        let mut headers = HashMap::new();
+        headers.insert("Content-type".to_string(), "application/wasm".to_string());
+
+        // using the "as" makes this almost usable :()
+        // will still try to implement a solution that abstracts this from the user
+        Box::new((StatusCode::OK, headers, state.wasm)) as Box<dyn IntoResp + Send>
+    })
+}
 
 #[derive(Clone, Debug, Default)]
 pub struct AppState {
     pub hello_page: String,
+    pub wasm: Vec<u8>,
 }
 #[tokio::main]
 async fn main() -> io::Result<()> {
     let file = std::fs::read_to_string("views/index.html").unwrap();
-    let app_state = AppState { hello_page: file };
+    let wasm = std::fs::read("main.wasm").unwrap();
+    let app_state = AppState {
+        hello_page: file,
+        wasm,
+    };
     let mut new_router: Node<AppState> = Node::new("/".to_string());
     let new_router_2 = new_router
         .add_handler(
             "/over/:user".to_string(),
             router::Handler::WithState(test_handler_user_state),
+        )
+        .unwrap()
+        .add_handler(
+            "/cool/wow".to_string(),
+            router::Handler::WithState(test_handler_bytes_state),
         )
         .unwrap()
         .add_state(app_state);
@@ -156,7 +176,7 @@ pub async fn handle_conn_node_based<
         Ok(request) => request,
         Err(_) => {
             let res = StatusCode::INTERNAL_SERVER_ERROR.into_response();
-            socket.write(res.as_bytes()).await?;
+            socket.write(res.as_slice()).await?;
             socket.flush().await?;
             return Ok(());
         }
@@ -168,13 +188,13 @@ pub async fn handle_conn_node_based<
             Some(fallback) => {
                 let res = fallback(request).await;
                 let resp = res.into_response();
-                socket.write(resp.as_bytes()).await?;
+                socket.write(resp.as_slice()).await?;
                 socket.flush().await?;
                 return Ok(());
             }
             None => {
                 let res = StatusCode::NOT_FOUND.into_response();
-                socket.write(res.as_bytes()).await?;
+                socket.write(res.as_slice()).await?;
                 socket.flush().await?;
                 return Ok(());
             }
@@ -188,14 +208,14 @@ pub async fn handle_conn_node_based<
         Some(res) => res,
         None => {
             let res = StatusCode::NOT_FOUND.into_response();
-            socket.write(res.as_bytes()).await?;
+            socket.write(res.as_slice()).await?;
             socket.flush().await?;
             return Ok(());
         }
     };
     let response = res.into_response();
     let clone = response.clone();
-    socket.write(clone.as_bytes()).await?;
+    socket.write(clone.as_slice()).await?;
     socket.flush().await?;
 
     return Ok(());
@@ -212,7 +232,7 @@ pub async fn handle_conn(
         Ok(request) => request,
         Err(_) => {
             let res = StatusCode::INTERNAL_SERVER_ERROR.into_response();
-            socket.write(res.as_bytes()).await?;
+            socket.write(res.as_slice()).await?;
             socket.flush().await?;
             return Ok(());
         }
@@ -224,13 +244,13 @@ pub async fn handle_conn(
             Some(fallback) => {
                 let res = fallback(request).await;
                 let resp = res.into_response();
-                socket.write(resp.as_bytes()).await?;
+                socket.write(resp.as_slice()).await?;
                 socket.flush().await?;
                 return Ok(());
             }
             None => {
                 let res = StatusCode::NOT_FOUND.into_response();
-                socket.write(res.as_bytes()).await?;
+                socket.write(res.as_slice()).await?;
                 socket.flush().await?;
                 return Ok(());
             }
@@ -239,7 +259,7 @@ pub async fn handle_conn(
     let res = handler(request).await;
     let response = res.into_response();
     let clone = response.clone();
-    socket.write(clone.as_bytes()).await?;
+    socket.write(clone.as_slice()).await?;
     socket.flush().await?;
 
     return Ok(());
