@@ -9,9 +9,9 @@ use request::RouteExtract;
 use response::IntoResp;
 use router::HandlerResponse;
 use router::HandlerType;
+use router::Router;
 use std::collections::HashMap;
 use std::io;
-
 use std::sync::Arc;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
@@ -68,7 +68,7 @@ pub struct MetaData {
 pub struct Request {
     pub metadata: MetaData,
     // Could also make the Extract a HashMap
-    pub extract: Option<RouteExtract>,
+    pub extract: Option<HashMap<String, String>>,
     pub body: Option<ContentType>,
     pub headers: HashMap<String, String>,
 }
@@ -81,6 +81,7 @@ pub struct RequestWithState<T: Clone> {
 }
 fn test_handler(req: Request) -> HandlerResponse<'static> {
     Box::pin(async move {
+        dbg!(req.extract);
         // This works but isnt really ideal, especially for the user since it is not really clear
         // and straight forward
         let file = std::fs::read_to_string("views/index.html").unwrap();
@@ -93,7 +94,7 @@ fn test_handler(req: Request) -> HandlerResponse<'static> {
 fn test_handler_user(req: Request) -> HandlerResponse<'static> {
     Box::pin(async move {
         let user = match req.extract {
-            Some(user) => user.value,
+            Some(user) => user.get("user").unwrap().clone(),
             None => "None".to_string(),
         };
         let returnmsg = "Hello ".to_string() + user.as_str();
@@ -105,7 +106,7 @@ fn test_handler_user(req: Request) -> HandlerResponse<'static> {
 fn test_handler_user_state(req: Request, state: AppState) -> HandlerResponse<'static> {
     Box::pin(async move {
         let user = match req.extract {
-            Some(user) => user.value,
+            Some(user) => user.get("user").unwrap().clone(),
             None => "None".to_string(),
         };
         let returnmsg = state.hello_page;
@@ -118,29 +119,29 @@ fn test_handler_user_state(req: Request, state: AppState) -> HandlerResponse<'st
         Box::new((StatusCode::OK, headers, res)) as Box<dyn IntoResp + Send>
     })
 }
-fn test_handler_bytes_state(req: Request, state: AppState) -> HandlerResponse<'static> {
+fn test_handler_bytes_state(_req: Request, state: AppState) -> HandlerResponse<'static> {
     Box::pin(async move {
         let mut headers = HashMap::new();
         headers.insert("Content-type".to_string(), "application/wasm".to_string());
 
         // using the "as" makes this almost usable :()
         // will still try to implement a solution that abstracts this from the user
-        Box::new((StatusCode::OK, headers, state.wasm)) as Box<dyn IntoResp + Send>
+        Box::new((StatusCode::OK, headers, state.hello_page)) as Box<dyn IntoResp + Send>
     })
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct AppState {
     pub hello_page: String,
-    pub wasm: Vec<u8>,
+    //pub wasm: Vec<u8>,
 }
 #[tokio::main]
 async fn main() -> io::Result<()> {
     let file = std::fs::read_to_string("views/index.html").unwrap();
-    let wasm = std::fs::read("main.wasm").unwrap();
+    //let wasm = std::fs::read("main.wasm").unwrap();
     let app_state = AppState {
         hello_page: file,
-        wasm,
+        //wasm,
     };
     let mut new_router: Node<AppState> = Node::new("/".to_string());
     let new_router_2 = new_router
@@ -154,7 +155,13 @@ async fn main() -> io::Result<()> {
             router::Handler::WithState(test_handler_bytes_state),
         )
         .unwrap()
+        .add_handler(
+            "/user/:id/time/:ts".to_string(),
+            router::Handler::Without(test_handler),
+        )
+        .unwrap()
         .add_state(app_state);
+    dbg!(&new_router_2);
     let boxed_router = Box::new(new_router_2);
     let leaked_router = Box::leak(boxed_router);
     leaked_router.serve("localhost:4000".to_string()).await;

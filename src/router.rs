@@ -3,11 +3,7 @@ use crate::request::RouteExtract;
 use crate::{response::IntoResp, Request};
 use async_std::sync::Arc;
 use http::StatusCode;
-use std::cell::{Cell, RefCell};
-use std::collections::VecDeque;
-use std::io::Result;
-use std::mem::replace;
-use std::ops::{Deref, DerefMut};
+use std::hash::Hasher;
 use std::pin::Pin;
 use std::{collections::HashMap, future::Future};
 use tokio::net::TcpListener;
@@ -44,7 +40,7 @@ where
 
 pub struct RoutingResult<T: std::clone::Clone> {
     pub handler: Handler<T>,
-    pub extract: Option<RouteExtract>,
+    pub extract: Option<HashMap<String, String>>,
 }
 #[derive(Debug, Default)]
 pub struct Node<T: Clone + Default + Send + std::marker::Sync> {
@@ -125,14 +121,14 @@ where
             return Ok(Box::new(std::mem::take(self)));
         }
     }
-    pub fn insert(&mut self, path: String, pathRn: String, func: Handler<T>) -> Box<Node<T>> {
+    pub fn insert(&mut self, path: String, path_rn: String, func: Handler<T>) -> Box<Node<T>> {
         //This is the base case when the path is reached the node is returned
-        if path == pathRn {
+        if path == path_rn {
             self.handler = Some(func);
             return Box::new(std::mem::take(self));
         }
 
-        let path_for_new_node = match pathRn.as_str() {
+        let path_for_new_node = match path_rn.as_str() {
             "/" => {
                 let splits: Vec<String> = path.split("/").map(|split| split.to_string()).collect();
                 let mut to_add = String::new();
@@ -147,7 +143,7 @@ where
                 final_str
             }
             _ => {
-                let missing_part_of_path = path.replace(pathRn.clone().as_str(), "").to_string();
+                let missing_part_of_path = path.replace(path_rn.clone().as_str(), "").to_string();
 
                 let splits: Vec<String> = missing_part_of_path
                     .split("/")
@@ -161,9 +157,9 @@ where
                     to_add_to_curr = i.clone();
                     break;
                 }
-                let mut final_path = match pathRn.ends_with("/") {
-                    false => pathRn.clone() + "/" + to_add_to_curr.as_str(),
-                    true => pathRn.clone() + to_add_to_curr.as_str(),
+                let mut final_path = match path_rn.ends_with("/") {
+                    false => path_rn.clone() + "/" + to_add_to_curr.as_str(),
+                    true => path_rn.clone() + to_add_to_curr.as_str(),
                 };
                 if to_add_to_curr == "" {
                     final_path = missing_part_of_path;
@@ -247,7 +243,43 @@ fn pub_walk<
                     .map(|split| split.to_string())
                     .collect();
                 if splits.len() != 2 {
-                    continue;
+                    //This path has more than one generic extract
+                    // for example /user/:id/time/:ts
+                    let handler = match &child.handler {
+                        Some(handler) => handler,
+                        None => {
+                            continue;
+                        }
+                    };
+                    let child_path_splits: Vec<String> = child
+                        .subpath
+                        .split("/")
+                        .map(|split| split.to_string())
+                        .collect();
+                    let curr_path_split: Vec<String> =
+                        path.split("/").map(|split| split.to_string()).collect();
+                    if curr_path_split.len() != child_path_splits.len() {
+                        // if the path is longer than the one rn we continue the search
+                        match pub_walk(&child.children, path.clone()) {
+                            Some(handler) => return Some(handler),
+                            None => (),
+                        }
+                        continue;
+                    }
+                    // switched the extracts to be an HashMap since it is now more than one
+                    // extract
+                    let mut extracts: HashMap<String, String> = HashMap::new();
+                    'inner: for (i, val) in child_path_splits.into_iter().enumerate() {
+                        if val.starts_with(":") {
+                            let extract = curr_path_split.get(i)?;
+                            extracts.insert(val.replace(":", "").to_string(), extract.to_string());
+                            continue 'inner;
+                        }
+                    }
+                    return Some(RoutingResult {
+                        handler: handler.clone(),
+                        extract: Some(extracts),
+                    });
                 }
                 // This is the identifier to the extract. For instance if we registered the route
                 // /user/:id then split by ":"  at index 0 we get the path before the ":" and at index 1 the identifier
@@ -265,20 +297,24 @@ fn pub_walk<
                     let value = values_split.get(1)?;
                     // This will likely become a HashMap since we
                     // want to have to ability to handle multiple extractors
-                    let new_extract = RouteExtract {
-                        value: value.clone(),
-                        identifier: identifier.clone(),
-                    };
+
+                    let mut extracts = HashMap::new();
+                    extracts.insert(identifier.clone(), value.clone());
                     match &child.handler {
                         Some(handler) => {
                             return Some(RoutingResult {
                                 handler: handler.clone(),
-                                extract: Some(new_extract),
-                            })
+                                extract: Some(extracts),
+                            });
                         }
-                        None => (),
+                        None => {
+                            match pub_walk(&child.children, path.clone()) {
+                                Some(handler) => return Some(handler),
+                                None => (),
+                            };
+                            ()
+                        }
                     }
-                    println!("In here found the path  ident: {}", identifier);
                 }
             }
             if child.subpath == path {

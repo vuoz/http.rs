@@ -17,6 +17,7 @@ Just another web framework but in rust
 * Might want to implement a thread pool instead of spawning a new thread  
 for every request  
 * Middleware  
+* Mutlitple extracts in one path for example: "/user/:id/time/:ts"
 
 ### Notes
 * This is not made for production applications
