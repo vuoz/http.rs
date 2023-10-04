@@ -245,12 +245,7 @@ fn pub_walk<
                 if splits.len() != 2 {
                     //This path has more than one generic extract
                     // for example /user/:id/time/:ts
-                    let handler = match &child.handler {
-                        Some(handler) => handler,
-                        None => {
-                            continue;
-                        }
-                    };
+
                     let child_path_splits: Vec<String> = child
                         .subpath
                         .split("/")
@@ -276,6 +271,12 @@ fn pub_walk<
                             continue 'inner;
                         }
                     }
+                    let handler = match &child.handler {
+                        Some(handler) => handler,
+                        None => {
+                            continue;
+                        }
+                    };
                     return Some(RoutingResult {
                         handler: handler.clone(),
                         extract: Some(extracts),
@@ -338,51 +339,4 @@ fn pub_walk<
         }
     }
     None
-}
-
-#[derive(Clone, Debug)]
-pub struct Router<T: Clone> {
-    routes: HashMap<String, HandlerType>,
-    fallback: Option<HandlerType>,
-    state: Option<T>,
-}
-
-impl<T: Clone> Router<T> {
-    pub fn new() -> Self {
-        Self {
-            routes: HashMap::new(),
-            fallback: None,
-            state: None,
-        }
-    }
-    pub async fn handle(&mut self, path: &str, func: HandlerType) -> std::io::Result<Self> {
-        self.routes.insert(path.to_string(), func);
-        return Ok(self.clone());
-    }
-    pub fn with_fallback(&mut self, func: HandlerType) -> std::io::Result<Self> {
-        self.fallback = Some(func);
-        return Ok(self.clone());
-    }
-    pub fn add_state(&mut self, state: T) -> Self {
-        self.state = Some(state);
-        self.clone()
-    }
-
-    pub async fn serve(self, addr: String) -> std::io::Result<()> {
-        let listener = TcpListener::bind(addr).await?;
-
-        loop {
-            let (socket, _) = listener.accept().await?;
-            let routes_clone = self.routes.clone();
-            let fallback_clone = self.fallback.clone();
-            tokio::spawn(async move {
-                match crate::handle_conn(socket, Arc::new(routes_clone), fallback_clone).await {
-                    Ok(_) => (),
-                    Err(e) => {
-                        panic!("Cannot handle incomming connection: {e}")
-                    }
-                };
-            });
-        }
-    }
 }

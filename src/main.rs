@@ -9,7 +9,6 @@ use request::RouteExtract;
 use response::IntoResp;
 use router::HandlerResponse;
 use router::HandlerType;
-use router::Router;
 use std::collections::HashMap;
 use std::io;
 use std::sync::Arc;
@@ -156,7 +155,7 @@ async fn main() -> io::Result<()> {
         )
         .unwrap()
         .add_handler(
-            "/user/:id/time/:ts".to_string(),
+            "/user/:id/time/:ts/wow".to_string(),
             router::Handler::Without(test_handler),
         )
         .unwrap()
@@ -220,50 +219,6 @@ pub async fn handle_conn_node_based<
             return Ok(());
         }
     };
-    let response = res.into_response();
-    let clone = response.clone();
-    socket.write(clone.as_slice()).await?;
-    socket.flush().await?;
-
-    return Ok(());
-}
-pub async fn handle_conn(
-    mut socket: TcpStream,
-    handlers: Arc<HashMap<String, HandlerType>>,
-    fallback: Option<HandlerType>,
-) -> std::io::Result<()> {
-    let mut buf = [0; 1024];
-    socket.read(&mut buf).await?;
-    let req_str = String::from_utf8_lossy(&buf[..]);
-    let request = match parse_request(req_str) {
-        Ok(request) => request,
-        Err(_) => {
-            let res = StatusCode::INTERNAL_SERVER_ERROR.into_response();
-            socket.write(res.as_slice()).await?;
-            socket.flush().await?;
-            return Ok(());
-        }
-    };
-
-    let handler = match handlers.get(&request.metadata.path) {
-        Some(handler) => handler,
-        None => match fallback {
-            Some(fallback) => {
-                let res = fallback(request).await;
-                let resp = res.into_response();
-                socket.write(resp.as_slice()).await?;
-                socket.flush().await?;
-                return Ok(());
-            }
-            None => {
-                let res = StatusCode::NOT_FOUND.into_response();
-                socket.write(res.as_slice()).await?;
-                socket.flush().await?;
-                return Ok(());
-            }
-        },
-    };
-    let res = handler(request).await;
     let response = res.into_response();
     let clone = response.clone();
     socket.write(clone.as_slice()).await?;
