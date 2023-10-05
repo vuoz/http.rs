@@ -155,7 +155,7 @@ async fn main() -> io::Result<()> {
         )
         .unwrap()
         .add_handler(
-            "/user/:id/time/:ts/wow".to_string(),
+            "/user/:id/time/:ts/day/:day/wow".to_string(),
             router::Handler::Without(test_handler),
         )
         .unwrap()

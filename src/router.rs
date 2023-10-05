@@ -12,12 +12,17 @@ pub type HandlerResponse<'a> = Pin<Box<dyn Future<Output = Box<dyn IntoResp + Se
 
 pub type HandlerType = fn(Request) -> HandlerResponse<'static>;
 pub type HandlerTypeState<T> = fn(Request, T) -> HandlerResponse<'static>;
+pub type HandlerTypeStateAndExtract<T> = fn(Request, T) -> HandlerResponse<'static>;
+pub type HandlerTypeWithStateAndMiddlewareExtract<T, S> =
+    fn(Request, T, S) -> HandlerResponse<'static>;
 #[derive(Debug, Default, Clone, Copy)]
 pub enum Handler<T: std::clone::Clone> {
     #[default]
     None,
     Without(HandlerType),
     WithState(HandlerTypeState<T>),
+    WithStateAndBodyExtract(HandlerTypeStateAndExtract<T>),
+    WithMiddleware(HandlerTypeWithStateAndMiddlewareExtract<T>),
 }
 impl<T: std::clone::Clone> Handler<T>
 where
@@ -33,6 +38,8 @@ where
                     "Missing state".to_string(),
                 )) as Box<dyn IntoResp + Send>),
             },
+            // Still need to implement this.
+            Handler::WithStateAndBodyExtract(func) => return None,
             Self::None => None,
         }
     }

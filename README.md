@@ -9,7 +9,7 @@ Just another web framework but in rust
 
 ## Things on the agenda  
 * Implement regex based routing  
-    * This requires the addition of extractors to make use of the parameters in the Uri  
+    *  [x] This requires the addition of extractors to make use of the parameters in the Uri  
 * Simplify the api  
 * Fix bugs in the rucursive addition and traversal of Nodes   
 * [x] Make a state extractor so that handler can use state  
