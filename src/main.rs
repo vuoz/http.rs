@@ -153,7 +153,7 @@ async fn main() -> io::Result<()> {
         )
         .unwrap()
         .add_handler(
-            "/user/:wow/dadas/:ts/inc".to_string(),
+            "/user/:wow/cool/:ts/inc".to_string(),
             router::Handler::Without(test_handler),
         )
         .unwrap();

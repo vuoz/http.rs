@@ -145,7 +145,7 @@ where
     }
     pub fn insert(&mut self, path: String, path_rn: String, func: Handler<T>) -> Box<Node<T>> {
         //This is the base case when the path is reached the node is returned
-     
+
         if path == path_rn {
             self.handler = Some(func);
             return Box::new(std::mem::take(self));
@@ -221,7 +221,6 @@ fn pub_walk_add_node<
 ) -> Option<(Box<Node<T>>, bool)> {
     match node.children.as_mut() {
         Some(children) => {
-            
             let mut matches = 0;
             for i in 0..children.len() {
                 let child = children.get_mut(i)?;
@@ -230,8 +229,8 @@ fn pub_walk_add_node<
                     return Some((Box::new(std::mem::take(node)), false));
                 }
                 let test_str = child.subpath.clone() + "/";
-                if path.contains(test_str.as_str()) {
-
+                if path.starts_with(test_str.as_str()) {
+                    // All of the below might have been fixed
                     // This causes a bug since /wow also matches on /wowo
                     // Another situation that becomes an issue is when we have path /cool/wow
                     // already added and want to add /user/:id/cool/ts/:ts
