@@ -5,16 +5,15 @@ pub mod router;
 use crate::router::Node;
 use http::StatusCode;
 use request::parse_request;
-use request::RouteExtract;
 use response::IntoResp;
 use router::HandlerResponse;
 use router::HandlerType;
 use std::collections::HashMap;
 use std::io;
-use std::sync::Arc;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
+use tokio::time::sleep;
 #[derive(Debug)]
 pub enum HandleConnError {
     Error(std::io::Error),
@@ -60,6 +59,11 @@ pub struct MetaData {
     pub path: String,
     pub version: String,
 }
+
+pub trait TestTraitForState {
+    fn get_user(&self, user: String) -> Option<()>;
+}
+
 // Might change the request to be called ctx in the future
 // since it now holds more that just plain request data.
 // Also since state still needs to be added to this struct
@@ -136,16 +140,10 @@ pub struct AppState {
 }
 #[tokio::main]
 async fn main() -> io::Result<()> {
-    let file = std::fs::read_to_string("views/index.html").unwrap();
-    //let wasm = std::fs::read("main.wasm").unwrap();
-    let app_state = AppState {
-        hello_page: file,
-        //wasm,
-    };
     let mut new_router: Node<AppState> = Node::new("/".to_string());
-    let new_router_2 = new_router
+    let mut new_router_2 = new_router
         .add_handler(
-            "/over/:user".to_string(),
+            "/cool/user/wow".to_string(),
             router::Handler::WithState(test_handler_user_state),
         )
         .unwrap()
@@ -155,11 +153,11 @@ async fn main() -> io::Result<()> {
         )
         .unwrap()
         .add_handler(
-            "/user/:id/time/:ts/wow".to_string(),
+            "/user/:wow/dadas/:ts/inc".to_string(),
             router::Handler::Without(test_handler),
         )
-        .unwrap()
-        .add_state(app_state);
+        .unwrap();
+
     dbg!(&new_router_2);
     let boxed_router = Box::new(new_router_2);
     let leaked_router = Box::leak(boxed_router);
@@ -168,7 +166,11 @@ async fn main() -> io::Result<()> {
 }
 
 pub async fn handle_conn_node_based<
-    T: std::clone::Clone + std::default::Default + std::marker::Send + std::marker::Sync,
+    T: std::clone::Clone
+        + std::default::Default
+        + std::marker::Send
+        + std::marker::Sync
+        + std::fmt::Debug,
 >(
     mut socket: TcpStream,
     handlers: &Node<T>,

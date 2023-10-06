@@ -1,10 +1,7 @@
-use crate::request::RouteExtract;
-
 use crate::{response::IntoResp, Request};
-use async_std::sync::Arc;
 use http::StatusCode;
-use std::hash::Hasher;
 use std::pin::Pin;
+use std::time::Duration;
 use std::{collections::HashMap, future::Future};
 use tokio::net::TcpListener;
 
@@ -12,12 +9,17 @@ pub type HandlerResponse<'a> = Pin<Box<dyn Future<Output = Box<dyn IntoResp + Se
 
 pub type HandlerType = fn(Request) -> HandlerResponse<'static>;
 pub type HandlerTypeState<T> = fn(Request, T) -> HandlerResponse<'static>;
+pub type HandlerTypeStateAndExtract<T> = fn(Request, T) -> HandlerResponse<'static>;
+pub type HandlerTypeWithStateAndMiddlewareExtract<T, S> =
+    fn(Request, T, S) -> HandlerResponse<'static>;
 #[derive(Debug, Default, Clone, Copy)]
 pub enum Handler<T: std::clone::Clone> {
     #[default]
     None,
     Without(HandlerType),
     WithState(HandlerTypeState<T>),
+    WithStateAndBodyExtract(HandlerTypeStateAndExtract<T>),
+    //WithMiddleware(HandlerTypeWithStateAndMiddlewareExtract<T>),
 }
 impl<T: std::clone::Clone> Handler<T>
 where
@@ -33,6 +35,8 @@ where
                     "Missing state".to_string(),
                 )) as Box<dyn IntoResp + Send>),
             },
+            // Still need to implement this.
+            Handler::WithStateAndBodyExtract(func) => return None,
             Self::None => None,
         }
     }
@@ -55,6 +59,7 @@ where
     T: Clone,
     T: Default,
     T: Send,
+    T: std::fmt::Debug,
 {
     pub fn new(path: String) -> Self {
         Node {
@@ -114,8 +119,25 @@ where
             self.handler = Some(handler);
             return Ok(Box::new(std::mem::take(self)));
         }
+
         let res = pub_walk_add_node(self, path, handler);
-        if let Some(node) = res {
+        if let Some((node, ok)) = res {
+            if ok {
+                match self.children.as_mut() {
+                    None => self.children = Some(Box::new(vec![node])),
+                    Some(vec) => {
+                        // this is ugly
+                        vec.push(node);
+                        if let Some(first_node) = vec.get(0) {
+                            if first_node.subpath == "" {
+                                vec.remove(0);
+                            }
+                        }
+                        return Ok(Box::new(std::mem::take(self)));
+                    }
+                }
+                return Ok(Box::new(std::mem::take(self)));
+            }
             return Ok(node);
         } else {
             return Ok(Box::new(std::mem::take(self)));
@@ -123,6 +145,7 @@ where
     }
     pub fn insert(&mut self, path: String, path_rn: String, func: Handler<T>) -> Box<Node<T>> {
         //This is the base case when the path is reached the node is returned
+     
         if path == path_rn {
             self.handler = Some(func);
             return Box::new(std::mem::take(self));
@@ -186,29 +209,38 @@ where
     }
 }
 fn pub_walk_add_node<
-    T: std::default::Default + std::clone::Clone + std::marker::Send + std::marker::Sync,
+    T: std::default::Default
+        + std::clone::Clone
+        + std::marker::Send
+        + std::marker::Sync
+        + std::fmt::Debug, /*new addition */
 >(
-    node: &mut Node<T>,
+    mut node: &mut Node<T>,
     path: String,
     func: Handler<T>,
-) -> Option<(Box<Node<T>>)> {
+) -> Option<(Box<Node<T>>, bool)> {
     match node.children.as_mut() {
         Some(children) => {
+            
             let mut matches = 0;
             for i in 0..children.len() {
                 let child = children.get_mut(i)?;
                 if child.subpath == path {
                     child.handler = Some(func);
-                    return Some(Box::new(std::mem::take(node)));
+                    return Some((Box::new(std::mem::take(node)), false));
                 }
                 let test_str = child.subpath.clone() + "/";
                 if path.contains(test_str.as_str()) {
+
                     // This causes a bug since /wow also matches on /wowo
+                    // Another situation that becomes an issue is when we have path /cool/wow
+                    // already added and want to add /user/:id/cool/ts/:ts
+                    // this happens since /cool also appears in /user/:id/cool/ts/:ts
                     // this is not wanted since you obv should not append to /wowo
                     matches = matches + 1;
 
                     match pub_walk_add_node(child, path.clone(), func) {
-                        Some(node) => return Some(node),
+                        Some((node, ok)) => return Some((node, ok)),
                         None => return None,
                     };
                 }
@@ -216,14 +248,16 @@ fn pub_walk_add_node<
             if matches == 0 {
                 let node_path_curr = node.subpath.clone();
                 let node = node.insert(path, node_path_curr, func);
-                return Some(node);
+
+                return Some((node, true));
             }
             return None;
         }
         None => {
             let node_path_curr = node.subpath.clone();
+            //let node = node.insert(path, node_path_curr, func);
             let node = node.insert(path, node_path_curr, func);
-            return Some(node);
+            return Some((node, false));
         }
     }
 }
