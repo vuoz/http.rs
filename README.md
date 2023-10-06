@@ -18,6 +18,7 @@ Just another web framework but in rust
 for every request  
 * Middleware  
 * [x]  Mutlitple extracts in one path for example: "/user/:id/time/:ts"
+*  [ ] Move to a cargo workspace and make this a lib package
 
 ### Notes
 * This is not made for production applications
