@@ -8,12 +8,12 @@ use request::parse_request;
 use response::IntoResp;
 use router::HandlerResponse;
 use router::HandlerType;
+use router::MiddlewareResponse;
 use std::collections::HashMap;
 use std::io;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
-use tokio::time::sleep;
 #[derive(Debug)]
 pub enum HandleConnError {
     Error(std::io::Error),
@@ -59,9 +59,11 @@ pub struct MetaData {
     pub path: String,
     pub version: String,
 }
-
-pub trait TestTraitForState {
-    fn get_user(&self, user: String) -> Option<()>;
+pub fn middleware_test(req: Request) -> MiddlewareResponse<'static> {
+    Box::pin(async move {
+        println!("Hello from middleware {}", req.metadata.path);
+        Ok(req)
+    })
 }
 
 // Might change the request to be called ctx in the future
@@ -84,13 +86,13 @@ pub struct RequestWithState<T: Clone> {
 }
 fn test_handler(req: Request) -> HandlerResponse<'static> {
     Box::pin(async move {
-        dbg!(req.extract);
         // This works but isnt really ideal, especially for the user since it is not really clear
         // and straight forward
         let file = std::fs::read_to_string("views/index.html").unwrap();
+        let resp = file.replace("{user}", "test_handler");
         let mut headers: HashMap<String, String> = HashMap::new();
         headers.insert("Content-type".to_string(), "text/html".to_string());
-        let response: Box<dyn IntoResp + Send> = Box::new((StatusCode::OK, headers, file));
+        let response: Box<dyn IntoResp + Send> = Box::new((StatusCode::OK, headers, resp));
         response
     })
 }
@@ -101,8 +103,7 @@ fn test_handler_user(req: Request) -> HandlerResponse<'static> {
             None => "None".to_string(),
         };
         let returnmsg = "Hello ".to_string() + user.as_str();
-        // using the "as" makes this almost usable :()
-        // will still try to implement a solution that abstracts this from the user
+
         Box::new((StatusCode::OK, returnmsg)) as Box<dyn IntoResp + Send>
     })
 }
@@ -117,8 +118,6 @@ fn test_handler_user_state(req: Request, state: AppState) -> HandlerResponse<'st
         let mut headers = HashMap::new();
         headers.insert("Content-type".to_string(), "text/html".to_string());
 
-        // using the "as" makes this almost usable :()
-        // will still try to implement a solution that abstracts this from the user
         Box::new((StatusCode::OK, headers, res)) as Box<dyn IntoResp + Send>
     })
 }
@@ -127,7 +126,7 @@ fn test_handler_bytes_state(_req: Request, state: AppState) -> HandlerResponse<'
         let mut headers = HashMap::new();
         headers.insert("Content-type".to_string(), "application/wasm".to_string());
 
-        // using the "as" makes this almost usable :()
+        // using the "as" makes this almost usable
         // will still try to implement a solution that abstracts this from the user
         Box::new((StatusCode::OK, headers, state.hello_page)) as Box<dyn IntoResp + Send>
     })
@@ -136,12 +135,10 @@ fn test_handler_bytes_state(_req: Request, state: AppState) -> HandlerResponse<'
 #[derive(Clone, Debug, Default)]
 pub struct AppState {
     pub hello_page: String,
-    //pub wasm: Vec<u8>,
 }
 #[tokio::main]
 async fn main() -> io::Result<()> {
-    let mut new_router: Node<AppState> = Node::new("/".to_string());
-    let mut new_router_2 = new_router
+    let new_router = Node::new("/".to_string())
         .add_handler(
             "/cool/user/wow".to_string(),
             router::Handler::WithState(test_handler_user_state),
@@ -156,10 +153,15 @@ async fn main() -> io::Result<()> {
             "/user/:wow/cool/:ts/inc".to_string(),
             router::Handler::Without(test_handler),
         )
+        .unwrap()
+        .add_handler(
+            "/wow/cool".to_string(),
+            router::Handler::WithMiddleware(vec![middleware_test], test_handler),
+        )
         .unwrap();
 
-    dbg!(&new_router_2);
-    let boxed_router = Box::new(new_router_2);
+    dbg!(&new_router);
+    let boxed_router = Box::new(new_router);
     let leaked_router = Box::leak(boxed_router);
     leaked_router.serve("localhost:4000".to_string()).await;
     Ok(())

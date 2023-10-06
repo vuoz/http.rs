@@ -1,31 +1,44 @@
 use crate::{response::IntoResp, Request};
 use http::StatusCode;
 use std::pin::Pin;
-use std::time::Duration;
 use std::{collections::HashMap, future::Future};
 use tokio::net::TcpListener;
 
 pub type HandlerResponse<'a> = Pin<Box<dyn Future<Output = Box<dyn IntoResp + Send>> + Send + 'a>>;
+pub type MiddlewareResponse<'a> =
+    Pin<Box<dyn Future<Output = Result<Request, StatusCode>> + Send + 'a>>;
+
+// This might need to be a future
+pub type MiddleWareFunctionType = fn(Request) -> MiddlewareResponse<'static>;
 
 pub type HandlerType = fn(Request) -> HandlerResponse<'static>;
 pub type HandlerTypeState<T> = fn(Request, T) -> HandlerResponse<'static>;
 pub type HandlerTypeStateAndExtract<T> = fn(Request, T) -> HandlerResponse<'static>;
 pub type HandlerTypeWithStateAndMiddlewareExtract<T, S> =
     fn(Request, T, S) -> HandlerResponse<'static>;
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone)]
 pub enum Handler<T: std::clone::Clone> {
     #[default]
     None,
     Without(HandlerType),
     WithState(HandlerTypeState<T>),
     WithStateAndBodyExtract(HandlerTypeStateAndExtract<T>),
-    //WithMiddleware(HandlerTypeWithStateAndMiddlewareExtract<T>),
+    // The idea is to just have a number of functions that modify the Request
+    // this might cause issues down the road
+    // This means we might want to inject some data into the Reqeust object
+    // therefore the struct Request needs to be generic which introduces a great amount of
+    // complexity to the whole operation
+    WithMiddleware(Vec<MiddleWareFunctionType>, HandlerType),
 }
 impl<T: std::clone::Clone> Handler<T>
 where
     T: Clone,
 {
-    pub async fn handle(self, req: Request, state: Option<T>) -> Option<Box<dyn IntoResp + Send>> {
+    pub async fn handle(
+        self,
+        mut req: Request,
+        state: Option<T>,
+    ) -> Option<Box<dyn IntoResp + Send>> {
         match self {
             Handler::Without(func) => Some(func(req).await),
             Handler::WithState(func) => match state {
@@ -37,6 +50,19 @@ where
             },
             // Still need to implement this.
             Handler::WithStateAndBodyExtract(func) => return None,
+            Handler::WithMiddleware(mut fns, path_handler) => {
+                // This is the first draft for the implementation of a middleware
+                for i in 0..fns.len() {
+                    let handler = fns.get_mut(i).unwrap();
+                    // Check if the middleware returns an error
+                    req = match handler(req).await {
+                        Ok(req) => req,
+                        Err(e) => return Some(Box::new(e)),
+                    };
+                }
+                let resp = path_handler(req).await;
+                Some(resp)
+            }
             Self::None => None,
         }
     }
@@ -128,6 +154,7 @@ where
                     Some(vec) => {
                         // this is ugly
                         vec.push(node);
+                        // this is due to the std::mem::take that leaves a default in there
                         if let Some(first_node) = vec.get(0) {
                             if first_node.subpath == "" {
                                 vec.remove(0);
