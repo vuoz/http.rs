@@ -2,18 +2,16 @@ pub mod parse;
 pub mod request;
 pub mod response;
 pub mod router;
+use crate::request::Request;
 use crate::router::Node;
 use http::StatusCode;
 use request::parse_request;
 use response::IntoResp;
 use router::HandlerResponse;
-use router::HandlerType;
 use router::MiddlewareResponse;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io;
-use tokio::io::AsyncReadExt;
-use tokio::io::AsyncWriteExt;
-use tokio::net::TcpStream;
 #[derive(Debug)]
 pub enum HandleConnError {
     Error(std::io::Error),
@@ -69,14 +67,7 @@ pub fn middleware_test(req: Request) -> MiddlewareResponse<'static> {
 // Might change the request to be called ctx in the future
 // since it now holds more that just plain request data.
 // Also since state still needs to be added to this struct
-#[derive(Debug, Clone)]
-pub struct Request {
-    pub metadata: MetaData,
-    // Could also make the Extract a HashMap
-    pub extract: Option<HashMap<String, String>>,
-    pub body: Option<ContentType>,
-    pub headers: HashMap<String, String>,
-}
+
 #[derive(Debug)]
 pub struct RequestWithState<T: Clone> {
     pub metadata: MetaData,
@@ -96,6 +87,14 @@ fn test_handler(req: Request) -> HandlerResponse<'static> {
         response
     })
 }
+
+fn test_handler_extract(
+    req: Request,
+    extract: NewStruct,
+    state: AppState,
+) -> HandlerResponse<'static> {
+    Box::pin(async move { Box::new(StatusCode::OK) as Box<dyn IntoResp + Send> })
+}
 fn test_handler_user(req: Request) -> HandlerResponse<'static> {
     Box::pin(async move {
         let user = match req.extract {
@@ -107,18 +106,14 @@ fn test_handler_user(req: Request) -> HandlerResponse<'static> {
         Box::new((StatusCode::OK, returnmsg)) as Box<dyn IntoResp + Send>
     })
 }
-fn test_handler_user_state(req: Request, state: AppState) -> HandlerResponse<'static> {
+fn test_handler_user_state(
+    req: Request,
+    data: NewStruct,
+    state: AppState,
+) -> HandlerResponse<'static> {
     Box::pin(async move {
-        let user = match req.extract {
-            Some(user) => user.get("user").unwrap().clone(),
-            None => "None".to_string(),
-        };
-        let returnmsg = state.hello_page;
-        let res = returnmsg.replace("{user}", &user);
-        let mut headers = HashMap::new();
-        headers.insert("Content-type".to_string(), "text/html".to_string());
-
-        Box::new((StatusCode::OK, headers, res)) as Box<dyn IntoResp + Send>
+        dbg!(data);
+        Box::new((StatusCode::OK, "hello success".to_string())) as Box<dyn IntoResp + Send>
     })
 }
 fn test_handler_bytes_state(_req: Request, state: AppState) -> HandlerResponse<'static> {
@@ -136,28 +131,19 @@ fn test_handler_bytes_state(_req: Request, state: AppState) -> HandlerResponse<'
 pub struct AppState {
     pub hello_page: String,
 }
+#[derive(Deserialize, Debug, Default, Clone)]
+pub struct NewStruct {
+    pub hello: String,
+}
 #[tokio::main]
 async fn main() -> io::Result<()> {
-    let new_router = Node::new("/".to_string())
+    let new_router: Box<Node<AppState, NewStruct>> = Node::new("/".to_string())
         .add_handler(
-            "/cool/user/wow".to_string(),
-            router::Handler::WithState(test_handler_user_state),
+            "/cool".to_string(),
+            router::Handler::WithStateAndBodyExtract(test_handler_user_state),
         )
         .unwrap()
-        .add_handler(
-            "/cool/wow".to_string(),
-            router::Handler::WithState(test_handler_bytes_state),
-        )
-        .unwrap()
-        .add_handler(
-            "/user/:wow/cool/:ts/inc".to_string(),
-            router::Handler::Without(test_handler),
-        )
-        .unwrap()
-        .add_handler(
-            "/wow/cool".to_string(),
-            router::Handler::WithMiddleware(vec![middleware_test], test_handler),
-        )
+        .add_handler("/wow".to_string(), router::Handler::Without(test_handler))
         .unwrap();
 
     dbg!(&new_router);
@@ -165,68 +151,4 @@ async fn main() -> io::Result<()> {
     let leaked_router = Box::leak(boxed_router);
     leaked_router.serve("localhost:4000".to_string()).await;
     Ok(())
-}
-
-pub async fn handle_conn_node_based<
-    T: std::clone::Clone
-        + std::default::Default
-        + std::marker::Send
-        + std::marker::Sync
-        + std::fmt::Debug,
->(
-    mut socket: TcpStream,
-    handlers: &Node<T>,
-    fallback: Option<HandlerType>,
-    state: Option<T>,
-) -> std::io::Result<()> {
-    let mut buf = [0; 1024];
-    socket.read(&mut buf).await?;
-    let req_str = String::from_utf8_lossy(&buf[..]);
-    let mut request = match parse_request(req_str) {
-        Ok(request) => request,
-        Err(_) => {
-            let res = StatusCode::INTERNAL_SERVER_ERROR.into_response();
-            socket.write(res.as_slice()).await?;
-            socket.flush().await?;
-            return Ok(());
-        }
-    };
-
-    let routing_res = match handlers.get_handler(request.metadata.path.clone()) {
-        Some(res) => res,
-        None => match fallback {
-            Some(fallback) => {
-                let res = fallback(request).await;
-                let resp = res.into_response();
-                socket.write(resp.as_slice()).await?;
-                socket.flush().await?;
-                return Ok(());
-            }
-            None => {
-                let res = StatusCode::NOT_FOUND.into_response();
-                socket.write(res.as_slice()).await?;
-                socket.flush().await?;
-                return Ok(());
-            }
-        },
-    };
-    let handler = routing_res.handler;
-    if let Some(extract) = routing_res.extract {
-        request.extract = Some(extract);
-    }
-    let res = match handler.handle(request, state).await {
-        Some(res) => res,
-        None => {
-            let res = StatusCode::NOT_FOUND.into_response();
-            socket.write(res.as_slice()).await?;
-            socket.flush().await?;
-            return Ok(());
-        }
-    };
-    let response = res.into_response();
-    let clone = response.clone();
-    socket.write(clone.as_slice()).await?;
-    socket.flush().await?;
-
-    return Ok(());
 }

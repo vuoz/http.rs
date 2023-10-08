@@ -3,6 +3,8 @@ use crate::parse::parse_body_new;
 use crate::parse::parse_header;
 use crate::parse::parse_method_line;
 use crate::Body;
+use crate::ContentType;
+use crate::MetaData;
 use std::borrow::Cow;
 use std::collections::HashMap;
 #[derive(Clone, Debug)]
@@ -10,11 +12,21 @@ pub struct RouteExtract {
     pub identifier: String,
     pub value: String,
 }
-use crate::Request;
 pub enum ParseError {
     Empty,
     NotValidRequest,
     CannotParseMetaData,
+}
+#[derive(Debug, Clone)]
+pub struct Request {
+    pub metadata: MetaData,
+    pub extract: Option<HashMap<String, String>>,
+    pub body: Option<ContentType>,
+    pub headers: HashMap<String, String>,
+    /*
+    // this would be the idea for the middlware extracts
+    pub extension: Option<HashMap<String, T>>,
+    */
 }
 
 pub fn parse_request(req_str: Cow<'_, str>) -> Result<Request, ParseError> {

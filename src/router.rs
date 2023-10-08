@@ -1,44 +1,48 @@
+use crate::parse_request;
 use crate::{response::IntoResp, Request};
 use http::StatusCode;
 use std::pin::Pin;
 use std::{collections::HashMap, future::Future};
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
-
+use tokio::net::TcpStream;
+// Definition of the handler types
 pub type HandlerResponse<'a> = Pin<Box<dyn Future<Output = Box<dyn IntoResp + Send>> + Send + 'a>>;
 pub type MiddlewareResponse<'a> =
     Pin<Box<dyn Future<Output = Result<Request, StatusCode>> + Send + 'a>>;
 
-// This might need to be a future
-pub type MiddleWareFunctionType = fn(Request) -> MiddlewareResponse<'static>;
+pub type MiddleWareFunctionType<T, S> = fn(Request, T, Option<S>) -> MiddlewareResponse<'static>;
 
 pub type HandlerType = fn(Request) -> HandlerResponse<'static>;
+
 pub type HandlerTypeState<T> = fn(Request, T) -> HandlerResponse<'static>;
-pub type HandlerTypeStateAndExtract<T> = fn(Request, T) -> HandlerResponse<'static>;
+
+pub type HandlerTypeStateAndExtract<T, S> = fn(Request, S, T) -> HandlerResponse<'static>;
+
 pub type HandlerTypeWithStateAndMiddlewareExtract<T, S> =
     fn(Request, T, S) -> HandlerResponse<'static>;
 #[derive(Debug, Default, Clone)]
-pub enum Handler<T: std::clone::Clone> {
+pub enum Handler<T: std::clone::Clone, S> {
     #[default]
     None,
     Without(HandlerType),
     WithState(HandlerTypeState<T>),
-    WithStateAndBodyExtract(HandlerTypeStateAndExtract<T>),
+    WithStateAndBodyExtract(HandlerTypeStateAndExtract<T, S>),
     // The idea is to just have a number of functions that modify the Request
     // this might cause issues down the road
     // This means we might want to inject some data into the Reqeust object
     // therefore the struct Request needs to be generic which introduces a great amount of
     // complexity to the whole operation
-    WithMiddleware(Vec<MiddleWareFunctionType>, HandlerType),
+    //WithMiddleware(Vec<MiddleWareFunctionType<T>>, HandlerType),
 }
-impl<T: std::clone::Clone> Handler<T>
+impl<S, T: std::clone::Clone> Handler<T, S>
 where
+    for<'de> S: serde::Deserialize<'de>,
+
     T: Clone,
 {
-    pub async fn handle(
-        self,
-        mut req: Request,
-        state: Option<T>,
-    ) -> Option<Box<dyn IntoResp + Send>> {
+    pub async fn handle(self, req: Request, state: Option<T>) -> Option<Box<dyn IntoResp + Send>> {
         match self {
             Handler::Without(func) => Some(func(req).await),
             Handler::WithState(func) => match state {
@@ -49,8 +53,29 @@ where
                 )) as Box<dyn IntoResp + Send>),
             },
             // Still need to implement this.
-            Handler::WithStateAndBodyExtract(func) => return None,
-            Handler::WithMiddleware(mut fns, path_handler) => {
+            Handler::WithStateAndBodyExtract(func) => {
+                dbg!(&req.body);
+                let body = match req.body.clone() {
+                    Some(b) => b,
+                    None => return None,
+                };
+                let body = match body {
+                    crate::ContentType::Json(s) => s,
+                    crate::ContentType::Binary(_) => return None,
+                    crate::ContentType::None => return None,
+                    crate::ContentType::PlainText(_) => return None,
+                    crate::ContentType::UrlEncoded(_) => return None,
+                };
+                let val = serde_json::to_value(body).expect("could not deserialize");
+                let json: S = match serde_json::from_value(val) {
+                    Err(e) => panic!("Error turning in to S{e}"),
+                    Ok(json) => json,
+                };
+                let res = func(req, json, state.unwrap()).await;
+                Some(res)
+            }
+
+            /*Handler::WithMiddleware(mut fns, path_handler) => {
                 // This is the first draft for the implementation of a middleware
                 for i in 0..fns.len() {
                     let handler = fns.get_mut(i).unwrap();
@@ -62,30 +87,36 @@ where
                 }
                 let resp = path_handler(req).await;
                 Some(resp)
-            }
+            }*/
             Self::None => None,
         }
     }
 }
 
-pub struct RoutingResult<T: std::clone::Clone> {
-    pub handler: Handler<T>,
+pub struct RoutingResult<T: std::clone::Clone, S> {
+    pub handler: Handler<T, S>,
     pub extract: Option<HashMap<String, String>>,
 }
 #[derive(Debug, Default)]
-pub struct Node<T: Clone + Default + Send + std::marker::Sync> {
+pub struct Node<T: Clone + Default + Send + std::marker::Sync, S> {
     pub subpath: String,
-    pub children: Option<Box<Vec<Box<Node<T>>>>>,
-    pub handler: Option<Handler<T>>,
+    pub children: Option<Box<Vec<Box<Node<T, S>>>>>,
+    pub handler: Option<Handler<T, S>>,
     pub state: Option<T>,
 }
-impl<T> Node<T>
+impl<T, S> Node<T, S>
 where
     T: Sync,
     T: Clone,
     T: Default,
     T: Send,
     T: std::fmt::Debug,
+    for<'de> S: serde::Deserialize<'de>,
+    S: std::clone::Clone,
+    S: std::marker::Send,
+    S: std::marker::Sync,
+    S: Default,
+    S: std::fmt::Debug,
 {
     pub fn new(path: String) -> Self {
         Node {
@@ -110,7 +141,8 @@ where
                 Err(e) => panic!("Canot accept connection Error: {e}"),
             };
             tokio::spawn(async move {
-                match crate::handle_conn_node_based(socket, &self, None, self.state.clone()).await {
+                println!("Hello got a conection");
+                match handle_conn_node_based(socket, &self, None, self.state.clone()).await {
                     Ok(_) => (),
                     Err(e) => {
                         panic!("Cannot handle incomming connection: {e}")
@@ -119,7 +151,7 @@ where
             });
         }
     }
-    pub fn get_handler(&self, path: String) -> Option<RoutingResult<T>> {
+    pub fn get_handler(&self, path: String) -> Option<RoutingResult<T, S>> {
         if path == "/" {
             match &self.handler {
                 Some(handler) => {
@@ -139,7 +171,7 @@ where
     pub fn add_handler(
         &mut self,
         path: String,
-        handler: Handler<T>,
+        handler: Handler<T, S>,
     ) -> std::result::Result<Box<Self>, ()> {
         if path == "/" {
             self.handler = Some(handler);
@@ -170,7 +202,12 @@ where
             return Ok(Box::new(std::mem::take(self)));
         }
     }
-    pub fn insert(&mut self, path: String, path_rn: String, func: Handler<T>) -> Box<Node<T>> {
+    pub fn insert(
+        &mut self,
+        path: String,
+        path_rn: String,
+        func: Handler<T, S>,
+    ) -> Box<Node<T, S>> {
         //This is the base case when the path is reached the node is returned
 
         if path == path_rn {
@@ -241,11 +278,20 @@ fn pub_walk_add_node<
         + std::marker::Send
         + std::marker::Sync
         + std::fmt::Debug, /*new addition */
+    // this is just for development purposes
+    S: std::default::Default
+        + std::clone::Clone
+        + std::marker::Send
+        + std::marker::Sync
+        + std::fmt::Debug,
 >(
-    mut node: &mut Node<T>,
+    node: &mut Node<T, S>,
     path: String,
-    func: Handler<T>,
-) -> Option<(Box<Node<T>>, bool)> {
+    func: Handler<T, S>,
+) -> Option<(Box<Node<T, S>>, bool)>
+where
+    for<'de> S: serde::Deserialize<'de>,
+{
     match node.children.as_mut() {
         Some(children) => {
             let mut matches = 0;
@@ -289,11 +335,18 @@ fn pub_walk_add_node<
 }
 
 fn pub_walk<
+    'de,
     T: std::default::Default + std::clone::Clone + std::marker::Send + std::marker::Sync,
+    S: std::default::Default
+        + std::clone::Clone
+        + std::marker::Send
+        + std::marker::Sync
+        + std::fmt::Debug
+        + serde::Deserialize<'de>,
 >(
-    children: &Option<Box<Vec<Box<Node<T>>>>>,
+    children: &Option<Box<Vec<Box<Node<T, S>>>>>,
     path: String,
-) -> Option<RoutingResult<T>> {
+) -> Option<RoutingResult<T, S>> {
     if let Some(children) = children {
         for child in children.as_ref().into_iter() {
             if child.subpath.contains(":") {
@@ -399,4 +452,75 @@ fn pub_walk<
         }
     }
     None
+}
+pub async fn handle_conn_node_based<
+    T: std::clone::Clone
+        + std::default::Default
+        + std::marker::Send
+        + std::marker::Sync
+        + std::fmt::Debug,
+    S: std::default::Default
+        + std::clone::Clone
+        + std::marker::Send
+        + std::marker::Sync
+        + std::fmt::Debug,
+>(
+    mut socket: TcpStream,
+    handlers: &Node<T, S>,
+    fallback: Option<HandlerType>,
+    state: Option<T>,
+) -> std::io::Result<()>
+where
+    for<'de> S: serde::Deserialize<'de>,
+{
+    let mut buf = [0; 1024];
+    socket.read(&mut buf).await?;
+    let req_str = String::from_utf8_lossy(&buf[..]);
+    let mut request = match parse_request(req_str) {
+        Ok(request) => request,
+        Err(_) => {
+            let res = StatusCode::INTERNAL_SERVER_ERROR.into_response();
+            socket.write(res.as_slice()).await?;
+            socket.flush().await?;
+            return Ok(());
+        }
+    };
+
+    let routing_res = match handlers.get_handler(request.metadata.path.clone()) {
+        Some(res) => res,
+        None => match fallback {
+            Some(fallback) => {
+                let res = fallback(request).await;
+                let resp = res.into_response();
+                socket.write(resp.as_slice()).await?;
+                socket.flush().await?;
+                return Ok(());
+            }
+            None => {
+                let res = StatusCode::NOT_FOUND.into_response();
+                socket.write(res.as_slice()).await?;
+                socket.flush().await?;
+                return Ok(());
+            }
+        },
+    };
+    let handler = routing_res.handler;
+    if let Some(extract) = routing_res.extract {
+        request.extract = Some(extract);
+    }
+    let res = match handler.handle(request, state).await {
+        Some(res) => res,
+        None => {
+            let res = StatusCode::NOT_FOUND.into_response();
+            socket.write(res.as_slice()).await?;
+            socket.flush().await?;
+            return Ok(());
+        }
+    };
+    let response = res.into_response();
+    let clone = response.clone();
+    socket.write(clone.as_slice()).await?;
+    socket.flush().await?;
+
+    return Ok(());
 }
