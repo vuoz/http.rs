@@ -106,13 +106,8 @@ fn test_handler_user(req: Request) -> HandlerResponse<'static> {
         Box::new((StatusCode::OK, returnmsg)) as Box<dyn IntoResp + Send>
     })
 }
-fn test_handler_user_state(
-    req: Request,
-    data: NewStruct,
-    state: AppState,
-) -> HandlerResponse<'static> {
+fn test_handler_user_state(req: Request, state: AppState) -> HandlerResponse<'static> {
     Box::pin(async move {
-        dbg!(data);
         Box::new((StatusCode::OK, "hello success".to_string())) as Box<dyn IntoResp + Send>
     })
 }
@@ -137,12 +132,7 @@ pub struct NewStruct {
 }
 #[tokio::main]
 async fn main() -> io::Result<()> {
-    let new_router: Box<Node<AppState, NewStruct>> = Node::new("/".to_string())
-        .add_handler(
-            "/cool".to_string(),
-            router::Handler::WithStateAndBodyExtract(test_handler_user_state),
-        )
-        .unwrap()
+    let new_router: Box<Node<AppState>> = Node::new("/".to_string())
         .add_handler("/wow".to_string(), router::Handler::Without(test_handler))
         .unwrap();
 
