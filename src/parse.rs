@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
-use crate::Body;
-use crate::ContentType;
-use crate::Header;
-use crate::MetaData;
-use crate::QueryParam;
-use crate::TypeOfData;
+use crate::request::Body;
+use crate::request::ContentType;
+use crate::request::Header;
+use crate::request::MetaData;
+use crate::request::QueryParam;
+use crate::request::TypeOfData;
 
 pub fn parse_params(inpt: &str) -> Option<ContentType> {
     let params_pairs: Vec<QueryParam> = inpt

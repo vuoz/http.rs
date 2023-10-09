@@ -11,9 +11,10 @@ use tokio::net::TcpStream;
 // Definition of the handler types
 pub type HandlerResponse<'a> = Pin<Box<dyn Future<Output = Box<dyn IntoResp + Send>> + Send + 'a>>;
 pub type MiddlewareResponse<'a> =
-    Pin<Box<dyn Future<Output = Result<Request, StatusCode>> + Send + 'a>>;
+    Pin<Box<dyn Future<Output = Result<(Request, Box<dyn Clone>), StatusCode>> + Send + 'a>>;
 
-pub type MiddleWareFunctionType<T, S> = fn(Request, T, Option<S>) -> MiddlewareResponse<'static>;
+pub type MiddleWareFunctionType<T> =
+    fn(Request, T, Option<Box<dyn Clone>>) -> MiddlewareResponse<'static>;
 
 pub type HandlerType = fn(Request) -> HandlerResponse<'static>;
 
@@ -85,6 +86,10 @@ where
     pub fn add_state(&mut self, state: T) -> Self {
         self.state = Some(state);
         return std::mem::take(self);
+    }
+    pub fn make_into_serveable(self) -> &'static mut Self {
+        let box_self = Box::new(self);
+        Box::leak(box_self)
     }
     pub async fn serve(&'static self, addr: String) -> ! {
         let listener = match TcpListener::bind(addr).await {

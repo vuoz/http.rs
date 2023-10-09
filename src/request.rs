@@ -2,11 +2,46 @@ use crate::parse::parse_body;
 use crate::parse::parse_body_new;
 use crate::parse::parse_header;
 use crate::parse::parse_method_line;
-use crate::Body;
-use crate::ContentType;
-use crate::MetaData;
+
 use std::borrow::Cow;
 use std::collections::HashMap;
+#[derive(Debug)]
+pub struct Header {
+    pub key: String,
+    pub val: String,
+}
+#[derive(Debug)]
+pub enum Body {
+    Binary(Vec<u8>),
+    Text(String),
+    None,
+}
+#[derive(Debug, Clone)]
+pub enum ContentType {
+    Json(String),
+    UrlEncoded(HashMap<String, String>),
+    PlainText(String),
+    Binary(Vec<u8>),
+    None,
+}
+#[derive(Debug)]
+pub struct QueryParam {
+    pub key: String,
+    pub val: String,
+}
+
+pub enum TypeOfData {
+    Header(Header),
+    Body(Body),
+}
+
+#[derive(Debug, Clone)]
+pub struct MetaData {
+    pub method: String,
+    pub path: String,
+    pub version: String,
+}
+
 #[derive(Clone, Debug)]
 pub struct RouteExtract {
     pub identifier: String,
