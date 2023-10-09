@@ -97,7 +97,6 @@ where
                 Err(e) => panic!("Canot accept connection Error: {e}"),
             };
             tokio::spawn(async move {
-                println!("Hello got a conection");
                 match handle_conn_node_based(socket, &self, None, self.state.clone()).await {
                     Ok(_) => (),
                     Err(e) => {
