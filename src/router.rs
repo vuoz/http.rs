@@ -28,13 +28,6 @@ pub enum Handler<T: std::clone::Clone> {
     None,
     Without(HandlerType),
     WithState(HandlerTypeState<T>),
-    //WithStateAndBodyExtract(HandlerTypeStateAndExtract<T, S>),
-    // The idea is to just have a number of functions that modify the Request
-    // this might cause issues down the road
-    // This means we might want to inject some data into the Reqeust object
-    // therefore the struct Request needs to be generic which introduces a great amount of
-    // complexity to the whole operation
-    //WithMiddleware(Vec<MiddleWareFunctionType<T>>, HandlerType),
 }
 impl<T: std::clone::Clone> Handler<T>
 where
@@ -393,6 +386,12 @@ fn pub_walk<
     }
     None
 }
+pub async fn send_error_response(mut socket: TcpStream, code: StatusCode) -> std::io::Result<()> {
+    let res = code.into_response();
+    socket.write(res.as_slice()).await?;
+    socket.flush().await?;
+    return Ok(());
+}
 pub async fn handle_conn_node_based<
     T: std::clone::Clone
         + std::default::Default
@@ -411,9 +410,7 @@ pub async fn handle_conn_node_based<
     let mut request = match parse_request(req_str) {
         Ok(request) => request,
         Err(_) => {
-            let res = StatusCode::INTERNAL_SERVER_ERROR.into_response();
-            socket.write(res.as_slice()).await?;
-            socket.flush().await?;
+            send_error_response(socket, StatusCode::BAD_REQUEST).await?;
             return Ok(());
         }
     };

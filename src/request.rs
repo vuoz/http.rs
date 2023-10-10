@@ -2,6 +2,7 @@ use crate::parse::parse_body;
 use crate::parse::parse_body_new;
 use crate::parse::parse_header;
 use crate::parse::parse_method_line;
+use crate::parse::parse_params;
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -58,10 +59,6 @@ pub struct Request {
     pub extract: Option<HashMap<String, String>>,
     pub body: Option<ContentType>,
     pub headers: HashMap<String, String>,
-    /*
-    // this would be the idea for the middlware extracts
-    pub extension: Option<HashMap<String, T>>,
-    */
 }
 
 pub fn parse_request(req_str: Cow<'_, str>) -> Result<Request, ParseError> {
@@ -99,7 +96,7 @@ pub fn parse_request(req_str: Cow<'_, str>) -> Result<Request, ParseError> {
         None => Body::None,
     };
 
-    let req = match headers.get("content-type") {
+    let mut req = match headers.get("content-type") {
         Some(header) => {
             let body = parse_body_new(body, header.clone()).unwrap();
             Request {
@@ -119,5 +116,52 @@ pub fn parse_request(req_str: Cow<'_, str>) -> Result<Request, ParseError> {
             req
         }
     };
+    // This parses the requests query params even if the correct content-type is not set
+    if req.metadata.path.contains("?") {
+        let splits: Vec<String> = req
+            .metadata
+            .path
+            .split("?")
+            .map(|split| split.to_string())
+            .collect();
+        if splits.len() != 2 {
+            return Err(ParseError::NotValidRequest);
+        }
+        if let Some(path) = splits.get(0) {
+            req.metadata.path = path.clone();
+        } else {
+            return Err(ParseError::NotValidRequest);
+        }
+        if let Some(params) = splits.get(1) {
+            let extract_result = parse_params(params);
+            let extract = match extract_result {
+                None => return Err(ParseError::NotValidRequest),
+                // This match isn't really ideal will try to find another solution
+                Some(result) => {
+                    let res = match result {
+                        crate::request::ContentType::Json(_) => {
+                            return Err(ParseError::NotValidRequest)
+                        }
+                        crate::request::ContentType::UrlEncoded(res) => res,
+                        crate::request::ContentType::PlainText(_) => {
+                            return Err(ParseError::NotValidRequest)
+                        }
+                        crate::request::ContentType::Binary(_) => {
+                            return Err(ParseError::NotValidRequest)
+                        }
+                        crate::request::ContentType::None => {
+                            return Err(ParseError::NotValidRequest)
+                        }
+                    };
+
+                    res
+                }
+            };
+            req.extract = Some(extract);
+        } else {
+            return Err(ParseError::NotValidRequest);
+        }
+    }
+
     return Ok(req);
 }
