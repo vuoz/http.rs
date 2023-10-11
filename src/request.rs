@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 use crate::parse::parse_body;
 use crate::parse::parse_body_new;
 use crate::parse::parse_header;

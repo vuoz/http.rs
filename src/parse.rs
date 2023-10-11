@@ -1,11 +1,11 @@
-use std::collections::HashMap;
-
+#![forbid(unsafe_code)]
 use crate::request::Body;
 use crate::request::ContentType;
 use crate::request::Header;
 use crate::request::MetaData;
 use crate::request::QueryParam;
 use crate::request::TypeOfData;
+use std::collections::HashMap;
 
 pub fn parse_params(inpt: &str) -> Option<ContentType> {
     let params_pairs: Vec<QueryParam> = inpt

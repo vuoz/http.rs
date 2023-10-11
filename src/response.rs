@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 use std::collections::HashMap;
 
 use http::StatusCode;
@@ -10,7 +12,7 @@ impl IntoResp for (StatusCode, String) {
         let response = format!(
             "HTTP/1.1 {} {}\r\nContent-Length: {}\r\n\r\n{}",
             self.0.as_u16(),
-            status_to_string(self.0),
+            self.0.into_status_message(),
             self.1.len(),
             self.1
         );
@@ -22,7 +24,7 @@ impl IntoResp for StatusCode {
         let response = format!(
             "HTTP/1.1 {} {}\r\nContent-Length: {}\r\n\r\n",
             self.as_u16(),
-            status_to_string(self.clone()),
+            self.clone().into_status_message(),
             0,
         );
         return Vec::from(response);
@@ -33,7 +35,7 @@ impl IntoResp for (StatusCode, Vec<u8>) {
         let response = format!(
             "HTTP/1.1 {} {}\r\nContent-Length: {}\r\n",
             self.0.as_u16(),
-            status_to_string(self.0),
+            self.0.into_status_message(),
             self.1.len(),
         );
 
@@ -53,7 +55,7 @@ impl IntoResp for (StatusCode, HashMap<String, String>, Vec<u8>) {
         let response = format!(
             "HTTP/1.1 {} {}\r\nContent-Length: {}\r\n{}\r\n",
             self.0.as_u16(),
-            status_to_string(self.0),
+            self.0.into_status_message(),
             self.2.len(),
             headers_string + "\r\n",
         );
@@ -74,7 +76,7 @@ impl IntoResp for (StatusCode, HashMap<String, String>, String) {
         let response = format!(
             "HTTP/1.1 {} {}\r\nContent-Length: {}\r\n{}\r\n{}",
             self.0.as_u16(),
-            status_to_string(self.0),
+            self.0.into_status_message(),
             self.2.len(),
             headers_string + "\r\n",
             self.2
@@ -82,17 +84,19 @@ impl IntoResp for (StatusCode, HashMap<String, String>, String) {
         Vec::from(response)
     }
 }
-
-// Would rather do it with a trait but this is a quick solution
-// Will change that in the future
-pub fn status_to_string(code: StatusCode) -> String {
-    match code {
-        StatusCode::OK => "Ok".to_string(),
-        StatusCode::NOT_FOUND => "NOT FOUND".to_string(),
-        StatusCode::FORBIDDEN => "FORBIDDEN".to_string(),
-        StatusCode::UNPROCESSABLE_ENTITY => "UNPROCESSABLE ENTITY".to_string(),
-        StatusCode::TOO_MANY_REQUESTS => "TO MANY REQUESTS".to_string(),
-        StatusCode::INTERNAL_SERVER_ERROR => "INTERNAL SERVER ERROR".to_string(),
-        _ => "INTERNAL SERVER ERROR".to_string(),
+pub trait IntoMessage {
+    fn into_status_message(&self) -> String;
+}
+impl IntoMessage for StatusCode {
+    fn into_status_message(&self) -> String {
+        match self {
+            &StatusCode::OK => "Ok".to_string(),
+            &StatusCode::NOT_FOUND => "NOT FOUND".to_string(),
+            &StatusCode::FORBIDDEN => "FORBIDDEN".to_string(),
+            &StatusCode::UNPROCESSABLE_ENTITY => "UNPROCESSABLE ENTITY".to_string(),
+            &StatusCode::TOO_MANY_REQUESTS => "TO MANY REQUESTS".to_string(),
+            &StatusCode::INTERNAL_SERVER_ERROR => "INTERNAL SERVER ERROR".to_string(),
+            _ => "INTERNAL SERVER ERROR".to_string(),
+        }
     }
 }

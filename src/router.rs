@@ -1,3 +1,4 @@
+#![forbid(unsafe_code)]
 use crate::parse_request;
 use crate::{response::IntoResp, Request};
 use http::StatusCode;
