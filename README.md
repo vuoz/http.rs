@@ -12,7 +12,7 @@ Just another web framework but in rust
     *  [x] This requires the addition of extractors to make use of the parameters in the Uri  
 * Simplify the api  
 * Fix bugs in the rucursive addition and traversal of Nodes   
-* [x] Make a state extractor so that handler can use state  
+* [x] Make a state extractor so that handlers can use state  
 * Find a better name  
 * Might want to implement a thread pool instead of spawning a new thread  
 for every request  
