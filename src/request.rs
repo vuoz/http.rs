@@ -74,6 +74,7 @@ pub fn parse_request(req_str: Cow<'_, str>) -> Result<Request, ParseError> {
     };
     let mut headers: HashMap<String, String> = HashMap::new();
     let mut j = 0;
+
     for i in 1..lines.len() {
         j += 1;
         let line = match lines.get(i) {
@@ -86,7 +87,6 @@ pub fn parse_request(req_str: Cow<'_, str>) -> Result<Request, ParseError> {
         };
         headers.insert(header.key, header.val);
     }
-
     let body = match lines.get(j + 1) {
         Some(line) => {
             let body_parsed = match parse_body(line) {

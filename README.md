@@ -39,6 +39,7 @@ for every request
 * [x]  Mutlitple extracts in one path for example: "/user/:id/time/:ts"
 *  [ ] Move to a cargo workspace and make this a lib package
 *  [ ] Less cloning
+*  [ ] Rename Node to Router
 
 ### Notes
 * This is not made for production applications

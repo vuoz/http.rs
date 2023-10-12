@@ -158,7 +158,6 @@ where
     }
     pub fn insert(&mut self, path: String, path_rn: String, func: Handler<T>) -> Box<Node<T>> {
         //This is the base case when the path is reached the node is returned
-
         if path == path_rn {
             self.handler = Some(func);
             return Box::new(std::mem::take(self));
@@ -211,6 +210,7 @@ where
                 return Box::new(std::mem::take(self));
             }
             None => {
+                //Recursivly insert until the path is reached
                 let node = new_node.insert(path.clone(), path_for_new_node.clone(), func);
                 let mut new_vec = Vec::new();
                 new_vec.push(node);

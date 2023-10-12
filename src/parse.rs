@@ -15,31 +15,20 @@ pub fn parse_params(inpt: &str) -> Option<ContentType> {
             let params_vec: Vec<String> = param.split("=").map(|param| param.to_string()).collect();
             if let Some(key) = params_vec.get(0) {
                 if let Some(val) = params_vec.get(1) {
-                    return Ok(QueryParam {
+                    let new_param = QueryParam {
                         key: key.clone(),
                         val: val.clone(),
-                    });
+                    };
+                    new_map.insert(new_param.key, new_param.val);
+                    ()
                 }
             }
-            Err(())
+            ()
         })
-        .take_while(|pair| {
-            if let Ok(_) = pair {
-                return true;
-            }
-            return false;
-        })
-        // this should never panic since we remove any Error Resutls in the prev take_while
-        .map(|pair| pair.unwrap())
-        .map(|pair| {
-            new_map.insert(pair.key, pair.val);
-        })
-        .collect();
+        .collect::<Vec<()>>();
     if new_map.len() == 0 {
         return None;
     }
-    dbg!(&new_map);
-
     return Some(ContentType::UrlEncoded(new_map));
 }
 pub fn parse_body_new(inpt: Body, content_type: String) -> Option<ContentType> {
@@ -85,10 +74,7 @@ pub fn parse_body(inpt: &str) -> Option<Body> {
 }
 
 pub fn parse_header(inpt: &str) -> Option<Header> {
-    let headers: Vec<String> = inpt
-        .split(": ")
-        .map(|part| part.to_string().to_lowercase())
-        .collect();
+    let headers: Vec<String> = inpt.split(": ").map(|part| part.to_lowercase()).collect();
     if headers.len() != 2 {
         return None;
     }
@@ -101,16 +87,16 @@ pub fn parse_line() -> Option<TypeOfData> {
     return None;
 }
 pub fn parse_method_line(inpt: &str) -> Option<MetaData> {
-    let parts: Vec<String> = inpt.split(" ").map(|part| part.to_string()).collect();
+    let parts: Vec<&str> = inpt.split(" ").collect();
     if parts.len() != 3 {
         return None;
     }
-    let method = parts.get(0)?.clone();
-    let path = parts.get(1)?.clone();
-    let version = parts.get(2)?.clone();
+    let method = parts.get(0)?;
+    let path = parts.get(1)?;
+    let version = parts.get(2)?;
     return Some(MetaData {
-        method,
-        path,
-        version,
+        method: method.to_string(),
+        path: path.to_string(),
+        version: version.to_string(),
     });
 }
