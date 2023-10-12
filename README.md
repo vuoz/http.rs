@@ -12,18 +12,18 @@ Just another web framework but in rust
 Handlers with path extracts  
 
 ```rust
-    let Router = Node::new("/")
-        .add_handler("/user/:id/ts/:time", router::Handler::Without(test_handler))
-        .unwrap();
+let Router = Node::new("/")
+    .add_handler("/user/:id/ts/:time", router::Handler::Without(test_handler))
+    .unwrap();
 ```
 
 Handlers with State  
 
 ```rust
-    let Router = Node::new("/")
-        .add_handler("/user/:id/ts/:time", router::Handler::WithState(test_handler))
-        .unwrap()
-        .add_state(AppState {...});
+let Router = Node::new("/")
+    .add_handler("/user/:id/ts/:time", router::Handler::WithState(test_handler))
+    .unwrap()
+    .add_state(AppState {...});
 ```
 
 ## Things on the agenda  
@@ -35,7 +35,7 @@ Handlers with State
 *  [ ] Find a better name  
 *  [ ] Might want to implement a thread pool instead of spawning a new thread  
 for every request  
-* Middleware  
+* [ ] Middleware  
 * [x]  Mutlitple extracts in one path for example: "/user/:id/time/:ts"
 *  [ ] Move to a cargo workspace and make this a lib package
 *  [ ] Less cloning
