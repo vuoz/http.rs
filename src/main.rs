@@ -33,8 +33,8 @@ pub struct AppState {
 #[tokio::main]
 async fn main() -> io::Result<()> {
     let file = std::fs::read_to_string("views/index.html").unwrap();
-    let new_router = Node::new("/".to_string())
-        .add_handler("/wow".to_string(), router::Handler::WithState(test_handler))
+    let new_router = Node::new("/")
+        .add_handler("/wow", router::Handler::WithState(test_handler))
         .unwrap()
         .add_state(AppState { hello_page: file });
     dbg!(&new_router);

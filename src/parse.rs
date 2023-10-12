@@ -8,31 +8,39 @@ use crate::request::TypeOfData;
 use std::collections::HashMap;
 
 pub fn parse_params(inpt: &str) -> Option<ContentType> {
-    let params_pairs: Vec<QueryParam> = inpt
+    let mut new_map = HashMap::new();
+    let _: Vec<()> = inpt
         .split("&")
         .map(|param| {
             let params_vec: Vec<String> = param.split("=").map(|param| param.to_string()).collect();
             if let Some(key) = params_vec.get(0) {
                 if let Some(val) = params_vec.get(1) {
-                    return QueryParam {
+                    return Ok(QueryParam {
                         key: key.clone(),
                         val: val.clone(),
-                    };
+                    });
                 }
             }
-            QueryParam {
-                key: "".to_string(),
-                val: "".to_string(),
-            }
+            Err(())
         })
-        .take_while(|pair| pair.val != "".to_string())
+        .take_while(|pair| {
+            if let Ok(_) = pair {
+                return true;
+            }
+            return false;
+        })
+        // this should never panic since we remove any Error Resutls in the prev take_while
+        .map(|pair| pair.unwrap())
+        .map(|pair| {
+            new_map.insert(pair.key, pair.val);
+        })
         .collect();
-
-    let mut queryparams_map = HashMap::new();
-    for pair in params_pairs {
-        queryparams_map.insert(pair.key, pair.val);
+    if new_map.len() == 0 {
+        return None;
     }
-    return Some(ContentType::UrlEncoded(queryparams_map));
+    dbg!(&new_map);
+
+    return Some(ContentType::UrlEncoded(new_map));
 }
 pub fn parse_body_new(inpt: Body, content_type: String) -> Option<ContentType> {
     //This implementation will change in the future i do not think this is the correct approach but

@@ -27,7 +27,7 @@ pub enum ContentType {
     Binary(Vec<u8>),
     None,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct QueryParam {
     pub key: String,
     pub val: String,

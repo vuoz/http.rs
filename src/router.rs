@@ -69,9 +69,9 @@ where
     T: Send,
     T: std::fmt::Debug,
 {
-    pub fn new(path: String) -> Self {
+    pub fn new(path: &str) -> Self {
         Node {
-            subpath: path,
+            subpath: path.to_string(),
             children: None,
             handler: None,
             state: None,
@@ -124,7 +124,7 @@ where
     }
     pub fn add_handler(
         &mut self,
-        path: String,
+        path: &str,
         handler: Handler<T>,
     ) -> std::result::Result<Box<Self>, ()> {
         if path == "/" {
@@ -132,7 +132,7 @@ where
             return Ok(Box::new(std::mem::take(self)));
         }
 
-        let res = pub_walk_add_node(self, path, handler);
+        let res = pub_walk_add_node(self, path.to_string(), handler);
         if let Some((node, ok)) = res {
             if ok {
                 match self.children.as_mut() {
@@ -203,7 +203,7 @@ where
                 final_path
             }
         };
-        let mut new_node = Node::new(path_for_new_node.clone());
+        let mut new_node = Node::new(path_for_new_node.as_str());
         match self.children.as_mut() {
             Some(children) => {
                 let node = new_node.insert(path.clone(), path_for_new_node.clone(), func);
@@ -440,17 +440,11 @@ pub async fn handle_conn_node_based<
     }
     let res = match handler.handle(request, state).await {
         Some(res) => res,
-        None => {
-            let res = StatusCode::NOT_FOUND.into_response();
-            socket.write(res.as_slice()).await?;
-            socket.flush().await?;
-            return Ok(());
-        }
+        None => return send_error_response(socket, StatusCode::NOT_FOUND).await,
     };
     let response = res.into_response();
     let clone = response.clone();
-    socket.write(clone.as_slice()).await?;
+    socket.write_all(clone.as_slice()).await?;
     socket.flush().await?;
-
-    return Ok(());
+    Ok(())
 }
