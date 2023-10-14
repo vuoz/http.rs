@@ -100,17 +100,17 @@ pub fn parse_request(req_str: Cow<'_, str>) -> Result<Request, ParseError> {
 
     let mut req = match headers.get("content-type") {
         Some(header) => {
-            let body = parse_body_new(body, header.clone()).unwrap();
+            let body = parse_body_new(body, header).unwrap();
             Request {
-                metadata: req_metadata.clone(),
+                metadata: req_metadata,
                 body: Some(body),
-                headers: headers.clone(),
+                headers,
                 extract: None,
             }
         }
         None => {
             let req = Request {
-                metadata: req_metadata.clone(),
+                metadata: req_metadata,
                 body: None,
                 headers,
                 extract: None,
@@ -119,6 +119,7 @@ pub fn parse_request(req_str: Cow<'_, str>) -> Result<Request, ParseError> {
         }
     };
     // This parses the requests query params even if the correct content-type is not set
+    // So even a get request without the header can be /page?id=3 an still me matched correctly
     if req.metadata.path.contains("?") {
         let splits: Vec<String> = req
             .metadata

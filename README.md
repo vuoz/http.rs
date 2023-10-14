@@ -40,6 +40,7 @@ for every request
 *  [ ] Move to a cargo workspace and make this a lib package
 *  [ ] Less cloning
 *  [ ] Rename Node to Router
+*  [ ] Remove Generics constrains on strucs and move them all to impl blocks
 
 ### Notes
 * This is not made for production applications

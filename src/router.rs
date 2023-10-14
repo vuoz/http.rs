@@ -9,19 +9,17 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 
-// Definition of the handler types
-pub type HandlerResponse<'a> = Pin<Box<dyn Future<Output = Box<dyn IntoResp + Send>> + Send + 'a>>;
+// Middleware definitions
 pub type MiddlewareResponse<'a> =
     Pin<Box<dyn Future<Output = Result<(Request, Box<dyn Clone>), StatusCode>> + Send + 'a>>;
 
 pub type MiddleWareFunctionType<T> =
     fn(Request, T, Option<Box<dyn Clone>>) -> MiddlewareResponse<'static>;
 
+pub type HandlerResponse<'a> = Pin<Box<dyn Future<Output = Box<dyn IntoResp + Send>> + Send + 'a>>;
 pub type HandlerType = fn(Request) -> HandlerResponse<'static>;
 
 pub type HandlerTypeState<T> = fn(Request, T) -> HandlerResponse<'static>;
-
-//pub type HandlerTypeStateAndExtract<T, S> = fn(Request, Json<S>, T) -> HandlerResponse<'static>;
 
 #[derive(Debug, Default, Clone)]
 pub enum Handler<T: std::clone::Clone> {
@@ -96,6 +94,10 @@ where
                 Err(e) => panic!("Canot accept connection Error: {e}"),
             };
             tokio::spawn(async move {
+                //                                                Might want to avoid cloning the
+                //                                                state for every connection, maybe
+                //                                                an Arc::clone would be better since it
+                //                                                does not create new memory
                 match handle_conn_node_based(socket, &self, None, self.state.clone()).await {
                     Ok(_) => (),
                     Err(e) => {
@@ -110,9 +112,10 @@ where
             match &self.handler {
                 Some(handler) => {
                     return Some(RoutingResult {
+                        // Would like to avoid cloing this for every connection
                         handler: handler.clone(),
                         extract: None,
-                    })
+                    });
                 }
                 None => return None,
             }
@@ -284,6 +287,8 @@ fn pub_walk<
     if let Some(children) = children {
         for child in children.as_ref().into_iter() {
             if child.subpath.contains(":") {
+                // This generic path extract handling isn't very well optimized
+                // Need to work on this
                 let splits: Vec<String> = child
                     .subpath
                     .split(":")
@@ -325,6 +330,7 @@ fn pub_walk<
                         }
                     };
                     return Some(RoutingResult {
+                        // Would like to avoid cloing this for every connection
                         handler: handler.clone(),
                         extract: Some(extracts),
                     });
@@ -369,9 +375,10 @@ fn pub_walk<
                 match &child.handler {
                     Some(handler) => {
                         return Some(RoutingResult {
+                            // Would like to avoid cloing this for every connection
                             handler: handler.clone(),
                             extract: None,
-                        })
+                        });
                     }
                     None => (),
                 }
@@ -389,9 +396,9 @@ fn pub_walk<
 }
 pub async fn send_error_response(mut socket: TcpStream, code: StatusCode) -> std::io::Result<()> {
     let res = code.into_response();
-    socket.write(res.as_slice()).await?;
+    socket.write_all(res.as_slice()).await?;
     socket.flush().await?;
-    return Ok(());
+    Ok(())
 }
 pub async fn handle_conn_node_based<
     T: std::clone::Clone
@@ -416,19 +423,19 @@ pub async fn handle_conn_node_based<
         }
     };
 
-    let routing_res = match handlers.get_handler(request.metadata.path.clone()) {
+    let routing_res: RoutingResult<T> = match handlers.get_handler(request.metadata.path.clone()) {
         Some(res) => res,
         None => match fallback {
             Some(fallback) => {
                 let res = fallback(request).await;
                 let resp = res.into_response();
-                socket.write(resp.as_slice()).await?;
+                socket.write_all(resp.as_slice()).await?;
                 socket.flush().await?;
                 return Ok(());
             }
             None => {
                 let res = StatusCode::NOT_FOUND.into_response();
-                socket.write(res.as_slice()).await?;
+                socket.write_all(res.as_slice()).await?;
                 socket.flush().await?;
                 return Ok(());
             }

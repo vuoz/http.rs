@@ -31,10 +31,10 @@ pub fn parse_params(inpt: &str) -> Option<ContentType> {
     }
     return Some(ContentType::UrlEncoded(new_map));
 }
-pub fn parse_body_new(inpt: Body, content_type: String) -> Option<ContentType> {
+pub fn parse_body_new(inpt: Body, content_type: &str) -> Option<ContentType> {
     //This implementation will change in the future i do not think this is the correct approach but
     //it works for now
-    match content_type.as_str() {
+    match content_type {
         "application/x-www-form-urlencoded" => {
             let data = match inpt {
                 Body::Binary(_) => return None,
