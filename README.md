@@ -41,6 +41,8 @@ for every request
 *  [ ] Less cloning
 *  [ ] Rename Node to Router
 *  [ ] Remove Generics constrains on strucs and move them all to impl blocks
+*  [ ] Simplify returning Html and Json
+    * [x] Html 
 
 ### Notes
 * This is not made for production applications

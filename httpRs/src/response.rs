@@ -4,8 +4,23 @@ use std::collections::HashMap;
 
 use http::StatusCode;
 
+use crate::router;
+
 pub trait IntoResp {
     fn into_response(&self) -> Vec<u8>;
+}
+impl IntoResp for router::Html {
+    fn into_response(&self) -> Vec<u8> {
+        let response = format!(
+            "HTTP/1.1 {} {}\r\nContent-Length: {}\r\n{}\r\n{}",
+            200,
+            "OK",
+            self.0.len(),
+            "Content-type: text/html".to_owned() + "\r\n",
+            self.0,
+        );
+        return Vec::from(response);
+    }
 }
 impl IntoResp for (StatusCode, String) {
     fn into_response(&self) -> Vec<u8> {

@@ -1,25 +1,28 @@
 #![forbid(unsafe_code)]
 
-use std::collections::HashMap;
-use httpRs::response::IntoResp;
 use http::StatusCode;
 use httpRs::request::Request;
+use httpRs::response::IntoResp;
 use httpRs::router::HandlerResponse;
 use httpRs::router::Node;
 use std::io;
 
-
-
 fn test_handler(req: Request, state: AppState) -> HandlerResponse<'static> {
     Box::pin(async move {
-        dbg!(&req.extract);
+        let mut page = String::new();
+        if let Some(extracts) = req.extract {
+            page = match extracts.get("page") {
+                Some(page) => page.clone(),
+                None => return Box::new(StatusCode::BAD_REQUEST) as Box<dyn IntoResp + Send>,
+            };
+        } else {
+            return Box::new(StatusCode::BAD_REQUEST) as Box<dyn IntoResp + Send>;
+        }
         // This works but isnt really ideal, especially for the user since it is not really clear
         // and straight forward
-        let mut headers: HashMap<String, String> = HashMap::new();
-        headers.insert("Content-type".to_string(), "text/html".to_string());
-        let response: Box<dyn IntoResp + Send> =
-            Box::new((StatusCode::OK, headers, state.hello_page));
-        response
+        Box::new(httpRs::router::Html(
+            state.hello_page.replace("{user}", page.as_str()),
+        )) as Box<dyn IntoResp + Send>
     })
 }
 
@@ -37,6 +40,6 @@ async fn main() -> io::Result<()> {
         .add_state(AppState { hello_page: file });
     dbg!(&router);
     let router_to_serve = router.make_into_serveable();
-    router_to_serve.serve("localhost:4000".to_string()).await;
+    router_to_serve.serve("localhost:4000").await;
     Ok(())
 }

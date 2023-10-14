@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 use crate::request::parse_request;
-use crate::{response::IntoResp, request::Request};
+use crate::{request::Request, response::IntoResp};
 use http::StatusCode;
 use std::pin::Pin;
 use std::{collections::HashMap, future::Future};
@@ -47,6 +47,7 @@ where
         }
     }
 }
+pub struct Html(pub String);
 
 pub struct RoutingResult<T: std::clone::Clone> {
     pub handler: Handler<T>,
@@ -83,7 +84,7 @@ where
         let box_self = Box::new(self);
         Box::leak(box_self)
     }
-    pub async fn serve(&'static self, addr: String) -> ! {
+    pub async fn serve(&'static self, addr: &str) -> ! {
         let listener = match TcpListener::bind(addr).await {
             Ok(listener) => listener,
             Err(e) => panic!("Cannot create listener Error: {e} "),
