@@ -1,1 +1,2 @@
-cargo run 
+cargo run --package app
+
