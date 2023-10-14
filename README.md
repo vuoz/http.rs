@@ -37,12 +37,13 @@ let Router = Node::new("/")
 for every request  
 * [ ] Middleware  
 * [x]  Mutlitple extracts in one path for example: "/user/:id/time/:ts"
-*  [ ] Move to a cargo workspace and make this a lib package
+*  [x] Move to a cargo workspace and make this a lib package
 *  [ ] Less cloning
 *  [ ] Rename Node to Router
-*  [ ] Remove Generics constrains on strucs and move them all to impl blocks
-*  [ ] Simplify returning Html and Json
+*  [ ] Move all generics constrians to impl blocks
+*  [x] Simplify returning Html and Json
     * [x] Html 
+    * [x] Json
 
 ### Notes
 * This is not made for production applications

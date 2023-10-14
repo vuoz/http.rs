@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use http::StatusCode;
 
-use crate::router;
+use crate::router::{self, Json};
 
 pub trait IntoResp {
     fn into_response(&self) -> Vec<u8>;
@@ -20,6 +20,38 @@ impl IntoResp for router::Html {
             self.0,
         );
         return Vec::from(response);
+    }
+}
+impl IntoResp for &str {
+    fn into_response(&self) -> Vec<u8> {
+        let response = format!(
+            "HTTP/1.1 {} {}\r\nContent-Length: {}\r\n\r\n{}",
+            200,
+            "OK",
+            self.len(),
+            self
+        );
+        Vec::from(response)
+    }
+}
+impl<T> IntoResp for Json<T>
+where
+    T: serde::Serialize,
+{
+    fn into_response(&self) -> Vec<u8> {
+        let json_string = match serde_json::to_string(&self.0) {
+            Ok(json) => json,
+            Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        };
+        let response = format!(
+            "HTTP/1.1 {} {}\r\nContent-Length: {}\r\n{}\r\n{}",
+            200,
+            "OK",
+            json_string.len(),
+            "Content-type: application/json".to_owned() + "\r\n",
+            json_string,
+        );
+        Vec::from(response)
     }
 }
 impl IntoResp for (StatusCode, String) {

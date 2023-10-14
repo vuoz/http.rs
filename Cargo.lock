@@ -23,6 +23,8 @@ version = "0.1.0"
 dependencies = [
  "http",
  "httpRs",
+ "serde",
+ "serde_json",
  "tokio",
 ]
 

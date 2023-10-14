@@ -48,6 +48,7 @@ where
     }
 }
 pub struct Html(pub String);
+pub struct Json<T: serde::Serialize>(pub T);
 
 pub struct RoutingResult<T: std::clone::Clone> {
     pub handler: Handler<T>,

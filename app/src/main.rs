@@ -1,29 +1,28 @@
 #![forbid(unsafe_code)]
 
-use http::StatusCode;
 use httpRs::request::Request;
 use httpRs::response::IntoResp;
 use httpRs::router::HandlerResponse;
+use httpRs::router::Json;
 use httpRs::router::Node;
+use serde::Serialize;
+
 use std::io;
 
-fn test_handler(req: Request, state: AppState) -> HandlerResponse<'static> {
+fn test_handler(_req: Request, _state: AppState) -> HandlerResponse<'static> {
     Box::pin(async move {
-        let mut page = String::new();
-        if let Some(extracts) = req.extract {
-            page = match extracts.get("page") {
-                Some(page) => page.clone(),
-                None => return Box::new(StatusCode::BAD_REQUEST) as Box<dyn IntoResp + Send>,
-            };
-        } else {
-            return Box::new(StatusCode::BAD_REQUEST) as Box<dyn IntoResp + Send>;
-        }
         // This works but isnt really ideal, especially for the user since it is not really clear
         // and straight forward
-        Box::new(httpRs::router::Html(
-            state.hello_page.replace("{user}", page.as_str()),
-        )) as Box<dyn IntoResp + Send>
+        let resp_obj = JsonTest {
+            test_string: String::from("wow"),
+        };
+        Box::new(Json(resp_obj)) as Box<dyn IntoResp + Send>
     })
+}
+
+#[derive(Clone, Serialize)]
+pub struct JsonTest {
+    pub test_string: String,
 }
 
 #[derive(Clone, Debug, Default)]

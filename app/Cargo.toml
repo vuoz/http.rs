@@ -9,5 +9,7 @@ edition = "2021"
 httpRs = {path="../httpRs"}
 http = "0.2.9"
 tokio = { version= "1.32.0", features = ["full"]}
+serde = {version = "1.0.188",features = ["derive"]}
+serde_json = "1.0.107"
 
 
