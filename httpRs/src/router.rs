@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
-use crate::parse_request;
-use crate::{response::IntoResp, Request};
+use crate::request::parse_request;
+use crate::{response::IntoResp, request::Request};
 use http::StatusCode;
 use std::pin::Pin;
 use std::{collections::HashMap, future::Future};
