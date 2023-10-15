@@ -131,19 +131,13 @@ impl IntoResp for (StatusCode, HashMap<String, String>, String) {
         Vec::from(response)
     }
 }
-pub trait IntoMessage {
+trait IntoMessage {
     fn into_status_message(&self) -> String;
 }
 impl IntoMessage for StatusCode {
     fn into_status_message(&self) -> String {
         match self {
-            &StatusCode::OK => "Ok".to_string(),
-            &StatusCode::NOT_FOUND => "NOT FOUND".to_string(),
-            &StatusCode::FORBIDDEN => "FORBIDDEN".to_string(),
-            &StatusCode::UNPROCESSABLE_ENTITY => "UNPROCESSABLE ENTITY".to_string(),
-            &StatusCode::TOO_MANY_REQUESTS => "TO MANY REQUESTS".to_string(),
-            &StatusCode::INTERNAL_SERVER_ERROR => "INTERNAL SERVER ERROR".to_string(),
-            _ => "INTERNAL SERVER ERROR".to_string(),
+            i => i.as_str().replace(&(i.as_str().to_owned() + " "), ""),
         }
     }
 }

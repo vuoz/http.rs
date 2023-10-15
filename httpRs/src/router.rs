@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 use crate::request::parse_request;
+use crate::request::ToRequest;
 use crate::{request::Request, response::IntoResp};
 use http::StatusCode;
 use std::pin::Pin;
@@ -20,6 +21,8 @@ pub type HandlerResponse<'a> = Pin<Box<dyn Future<Output = Box<dyn IntoResp + Se
 pub type HandlerType = fn(Request) -> HandlerResponse<'static>;
 
 pub type HandlerTypeState<T> = fn(Request, T) -> HandlerResponse<'static>;
+pub type HandlerTypeStateAndExtract<T> =
+    fn(Request, T, HashMap<String, String>) -> HandlerResponse<'static>;
 
 #[derive(Debug, Default, Clone)]
 pub enum Handler<T: std::clone::Clone> {
@@ -27,12 +30,18 @@ pub enum Handler<T: std::clone::Clone> {
     None,
     Without(HandlerType),
     WithState(HandlerTypeState<T>),
+    WithStateAndExtract(HandlerTypeStateAndExtract<T>),
 }
 impl<T: std::clone::Clone> Handler<T>
 where
     T: Clone,
 {
-    pub async fn handle(self, req: Request, state: Option<T>) -> Option<Box<dyn IntoResp + Send>> {
+    pub async fn handle(
+        self,
+        req: Request,
+        state: Option<T>,
+        extracts: Option<HashMap<String, String>>,
+    ) -> Option<Box<dyn IntoResp + Send>> {
         match self {
             Handler::Without(func) => Some(func(req).await),
             Handler::WithState(func) => match state {
@@ -42,6 +51,27 @@ where
                     "Missing state".to_string(),
                 )) as Box<dyn IntoResp + Send>),
             },
+            Self::WithStateAndExtract(func) => {
+                let extract = match extracts {
+                    None => {
+                        return Some(Box::new((
+                            StatusCode::BAD_REQUEST,
+                            "Missing path extracts".to_string(),
+                        )) as Box<dyn IntoResp + Send>)
+                    }
+                    Some(ext) => ext,
+                };
+                let state = match state {
+                    Some(state) => state,
+                    None => {
+                        return Some(Box::new((
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            "Missing state".to_string(),
+                        )) as Box<dyn IntoResp + Send>)
+                    }
+                };
+                Some(func(req, state, extract).await)
+            }
 
             Self::None => None,
         }
@@ -417,7 +447,7 @@ pub async fn handle_conn_node_based<
     let mut buf = [0; 1024];
     socket.read(&mut buf).await?;
     let req_str = String::from_utf8_lossy(&buf[..]);
-    let mut request = match parse_request(req_str) {
+    let mut parse_res = match parse_request(req_str) {
         Ok(request) => request,
         Err(_) => {
             send_error_response(socket, StatusCode::BAD_REQUEST).await?;
@@ -425,11 +455,12 @@ pub async fn handle_conn_node_based<
         }
     };
 
-    let routing_res: RoutingResult<T> = match handlers.get_handler(request.metadata.path.clone()) {
+    let routing_res: RoutingResult<T> = match handlers.get_handler(parse_res.metadata.path.clone())
+    {
         Some(res) => res,
         None => match fallback {
             Some(fallback) => {
-                let res = fallback(request).await;
+                let res = fallback(parse_res.to_request()).await;
                 let resp = res.into_response();
                 socket.write_all(resp.as_slice()).await?;
                 socket.flush().await?;
@@ -444,10 +475,32 @@ pub async fn handle_conn_node_based<
         },
     };
     let handler = routing_res.handler;
-    if let Some(extract) = routing_res.extract {
-        request.extract = Some(extract);
-    }
-    let res = match handler.handle(request, state).await {
+
+    // will try to find another solution other to cloning this map
+    let map_clone = parse_res.extract.clone();
+    let res = match handler
+        .handle(
+            parse_res.to_request(),
+            state,
+            // This is needed since there are two ways extracts can be added to the request
+            // The first being for example /user/:id which comes from the router
+            // And the second being on the end of the request path for example
+            // /user/:id?page=10
+            // This gets parsed by the request parser so we need to merge the two maps
+            match routing_res.extract {
+                Some(mut res) => match map_clone {
+                    Some(map2) => {
+                        res.extend(map2.into_iter());
+                        Some(res)
+                    }
+
+                    None => Some(res),
+                },
+                None => None,
+            },
+        )
+        .await
+    {
         Some(res) => res,
         None => return send_error_response(socket, StatusCode::NOT_FOUND).await,
     };

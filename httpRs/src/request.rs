@@ -58,12 +58,31 @@ pub enum ParseError {
 #[derive(Debug, Clone)]
 pub struct Request {
     pub metadata: MetaData,
+    //pub extract: Option<HashMap<String, String>>,
+    pub body: Option<ContentType>,
+    pub headers: HashMap<String, String>,
+}
+#[derive(Debug, Clone)]
+pub struct ParseRes {
+    pub metadata: MetaData,
     pub extract: Option<HashMap<String, String>>,
     pub body: Option<ContentType>,
     pub headers: HashMap<String, String>,
 }
+pub trait ToRequest {
+    fn to_request(self) -> Request;
+}
+impl ToRequest for ParseRes {
+    fn to_request(self) -> Request {
+        Request {
+            metadata: self.metadata,
+            body: self.body,
+            headers: self.headers,
+        }
+    }
+}
 
-pub fn parse_request(req_str: Cow<'_, str>) -> Result<Request, ParseError> {
+pub fn parse_request(req_str: Cow<'_, str>) -> Result<ParseRes, ParseError> {
     let lines: Vec<&str> = req_str.split("\r\n").collect();
     if lines.len() <= 0 {
         return Err(ParseError::NotValidRequest);
@@ -101,7 +120,7 @@ pub fn parse_request(req_str: Cow<'_, str>) -> Result<Request, ParseError> {
     let mut req = match headers.get("content-type") {
         Some(header) => {
             let body = parse_body_new(body, header).unwrap();
-            Request {
+            ParseRes {
                 metadata: req_metadata,
                 body: Some(body),
                 headers,
@@ -109,7 +128,7 @@ pub fn parse_request(req_str: Cow<'_, str>) -> Result<Request, ParseError> {
             }
         }
         None => {
-            let req = Request {
+            let req = ParseRes {
                 metadata: req_metadata,
                 body: None,
                 headers,
