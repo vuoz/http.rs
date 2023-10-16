@@ -43,7 +43,9 @@ for every request
 *  [ ] Move all generics constrians to impl blocks
 *  [x] Simplify returning Html and Json
     * [x] Html 
-    * [x] Json
+    * [x] Json  
+* [ ] TLS
+* [ ] Other HTTP Versions
 
 ### Notes
 * This is not made for production applications

@@ -136,8 +136,7 @@ trait IntoMessage {
 }
 impl IntoMessage for StatusCode {
     fn into_status_message(&self) -> String {
-        match self {
-            i => i.as_str().replace(&(i.as_str().to_owned() + " "), ""),
-        }
+        self.as_str()
+            .replace(&(self.as_u16().to_string().to_owned() + " "), "")
     }
 }

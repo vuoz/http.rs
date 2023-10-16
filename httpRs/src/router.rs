@@ -255,6 +255,9 @@ where
             }
         };
     }
+    pub fn server_tls(&self) -> ! {
+        loop {}
+    }
 }
 
 fn pub_walk_add_node<
