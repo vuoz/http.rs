@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+use serde::de::DeserializeOwned;
+
 use crate::parse::parse_body;
 use crate::parse::parse_body_new;
 use crate::parse::parse_header;
@@ -61,6 +63,43 @@ pub struct Request {
     //pub extract: Option<HashMap<String, String>>,
     pub body: Option<ContentType>,
     pub headers: HashMap<String, String>,
+}
+impl Request {
+    pub fn from_json_to_struct<T: DeserializeOwned>(self) -> std::io::Result<T> {
+        let body = match self.body {
+            None => return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "no body")),
+            Some(body) => body,
+        };
+        let json_string = match body {
+            ContentType::Json(data) => data,
+            ContentType::Binary(_) => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "wrong type of data",
+                ))
+            }
+            ContentType::PlainText(_) => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "wrong type of data",
+                ))
+            }
+            ContentType::UrlEncoded(_) => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "wrong type of data",
+                ))
+            }
+            ContentType::None => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "wrong type of data",
+                ))
+            }
+        };
+        let data: T = serde_json::from_str(&json_string)?;
+        Ok(data)
+    }
 }
 #[derive(Debug, Clone)]
 pub struct ParseRes {

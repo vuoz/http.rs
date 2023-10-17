@@ -2,6 +2,7 @@
 use crate::request::parse_request;
 use crate::request::ToRequest;
 use crate::{request::Request, response::IntoResp};
+use async_std::sync::Arc;
 use http::StatusCode;
 use std::pin::Pin;
 use std::{collections::HashMap, future::Future};
@@ -9,6 +10,7 @@ use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
+use tokio_rustls::TlsAcceptor;
 
 // Middleware definitions
 pub type MiddlewareResponse<'a> =
@@ -255,8 +257,49 @@ where
             }
         };
     }
-    pub fn server_tls(&self) -> ! {
-        loop {}
+    pub async fn serve_tls(&'static self, addr: &str) -> ! {
+        // need to implement loading the certs
+        // This implementation is very close to the example in the tokio_rustls crate
+        let cert_chain = crate::tls::load_certificates_from_pem("/path").unwrap();
+        let key_der = crate::tls::load_private_key_from_file("/path").unwrap();
+        let config = match rustls::ServerConfig::builder()
+            .with_safe_defaults()
+            .with_no_client_auth()
+            .with_single_cert(cert_chain, key_der)
+            .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))
+        {
+            Err(e) => panic!("{e}"),
+            Ok(config) => config,
+        };
+        let listener = match TcpListener::bind(addr).await {
+            Ok(listener) => listener,
+            Err(e) => panic!("Cannot create listener Error: {e} "),
+        };
+        let acceptor = TlsAcceptor::from(Arc::new(config));
+        loop {
+            let (socket, _) = match listener.accept().await {
+                Ok((socket, other_thing)) => (socket, other_thing),
+                Err(e) => panic!("Canot accept connection Error: {e}"),
+            };
+            let acceptor = acceptor.clone();
+            tokio::spawn(async move {
+                let stream = match acceptor.accept(socket).await {
+                    Ok(stream) => stream,
+                    Err(e) => panic!("Cannot accept connection {e}"),
+                };
+                match crate::tls::handle_conn_node_based_tls(
+                    tokio_rustls::TlsStream::Server(stream),
+                    &self,
+                    None,
+                    self.state.clone(),
+                )
+                .await
+                {
+                    Ok(()) => (),
+                    Err(e) => panic!("Cannot handle incomming connection: {e}"),
+                };
+            });
+        }
     }
 }
 
@@ -433,6 +476,7 @@ pub async fn send_error_response(mut socket: TcpStream, code: StatusCode) -> std
     let res = code.into_response();
     socket.write_all(res.as_slice()).await?;
     socket.flush().await?;
+    socket.shutdown().await?;
     Ok(())
 }
 pub async fn handle_conn_node_based<
@@ -450,7 +494,7 @@ pub async fn handle_conn_node_based<
     let mut buf = [0; 1024];
     socket.read(&mut buf).await?;
     let req_str = String::from_utf8_lossy(&buf[..]);
-    let mut parse_res = match parse_request(req_str) {
+    let parse_res = match parse_request(req_str) {
         Ok(request) => request,
         Err(_) => {
             send_error_response(socket, StatusCode::BAD_REQUEST).await?;
@@ -467,12 +511,11 @@ pub async fn handle_conn_node_based<
                 let resp = res.into_response();
                 socket.write_all(resp.as_slice()).await?;
                 socket.flush().await?;
+                socket.shutdown().await?;
                 return Ok(());
             }
             None => {
-                let res = StatusCode::NOT_FOUND.into_response();
-                socket.write_all(res.as_slice()).await?;
-                socket.flush().await?;
+                send_error_response(socket, StatusCode::NOT_FOUND).await?;
                 return Ok(());
             }
         },
@@ -511,5 +554,6 @@ pub async fn handle_conn_node_based<
     let clone = response.clone();
     socket.write_all(clone.as_slice()).await?;
     socket.flush().await?;
+    socket.shutdown().await?;
     Ok(())
 }

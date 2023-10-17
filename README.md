@@ -26,6 +26,25 @@ let Router = Node::new("/")
     .add_state(AppState {...});
 ```
 
+
+Deserializing your request body to a json struct with one function call
+ 
+```rust
+fn test_handler(
+    req: Request,
+) -> HandlerResponse<'static> {
+    Box::pin(async move {
+        let data: JsonTest = req.from_json_to_struct().unwrap();
+
+        let resp_obj = JsonTest {
+            test_string: data.test_string,
+            page: data.page,
+        };
+        Box::new(Json(resp_obj)) as Box<dyn IntoResp + Send>
+    })
+}
+```
+
 ## Things on the agenda  
 * [ ] Implement regex based routing  
     *  [x] This requires the addition of extractors to make use of the parameters in the Uri  

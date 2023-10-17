@@ -5,29 +5,31 @@ use httpRs::response::IntoResp;
 use httpRs::router::HandlerResponse;
 use httpRs::router::Json;
 use httpRs::router::Node;
+use serde::Deserialize;
 use serde::Serialize;
 use std::collections::HashMap;
 
 use std::io;
 
 fn test_handler(
-    _req: Request,
+    req: Request,
     _state: AppState,
     extracts: HashMap<String, String>,
 ) -> HandlerResponse<'static> {
     Box::pin(async move {
+        let data: JsonTest = req.from_json_to_struct().unwrap();
         // This works but isnt really ideal, especially for the user since it is not really clear
         // and straight forward
         let resp_obj = JsonTest {
-            test_string: String::from(extracts.get("user").unwrap()),
-            page: String::from(extracts.get("page").unwrap()),
+            test_string: data.test_string,
+            page: data.page,
         };
         dbg!(extracts);
         Box::new(Json(resp_obj)) as Box<dyn IntoResp + Send>
     })
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct JsonTest {
     pub test_string: String,
     pub page: String,
