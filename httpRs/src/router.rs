@@ -127,17 +127,19 @@ where
                 Ok((socket, other_thing)) => (socket, other_thing),
                 Err(e) => panic!("Canot accept connection Error: {e}"),
             };
+
             tokio::spawn(async move {
                 //                                                Might want to avoid cloning the
                 //                                                state for every connection, maybe
                 //                                                an Arc::clone would be better since it
                 //                                                does not create new memory
+                //
                 match handle_conn_node_based(socket, &self, None, self.state.clone()).await {
                     Ok(_) => (),
                     Err(e) => {
-                        panic!("Cannot handle incomming connection: {e}")
+                        panic!("Cannot handle incomming connection: {e} \n")
                     }
-                };
+                }
             });
         }
     }

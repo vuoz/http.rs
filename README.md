@@ -65,6 +65,7 @@ for every request
     * [x] Json  
 * [ ] TLS
 * [ ] Other HTTP Versions
+* [ ] Improve overall code quality
 
 ### Notes
 * This is not made for production applications
