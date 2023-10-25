@@ -66,6 +66,10 @@ for every request
 * [ ] TLS
 * [ ] Other HTTP Versions
 * [ ] Improve overall code quality
+* [ ] Correct Content-length handling 
+* [ ] Correct Connnection: close handling
+* [ ] Chunked transfer
+* [ ] Timeout requests
 
 ### Notes
 * This is not made for production applications

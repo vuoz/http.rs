@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+use crate::h2;
 use crate::request::parse_request;
 use crate::request::ToRequest;
 use crate::{request::Request, response::IntoResp};
@@ -259,11 +260,11 @@ where
             }
         };
     }
-    pub async fn serve_tls(&'static self, addr: &str) -> ! {
+    pub async fn serve_tls(&'static self, addr: &str, path_to_cert: &str) -> ! {
         // need to implement loading the certs
         // This implementation is very close to the example in the tokio_rustls crate
-        let cert_chain = crate::tls::load_certificates_from_pem("/path").unwrap();
-        let key_der = crate::tls::load_private_key_from_file("/path").unwrap();
+        let cert_chain = crate::tls::load_certificates_from_pem(path_to_cert).unwrap();
+        let key_der = crate::tls::load_private_key_from_file(path_to_cert).unwrap();
         let config = match rustls::ServerConfig::builder()
             .with_safe_defaults()
             .with_no_client_auth()
@@ -496,6 +497,14 @@ pub async fn handle_conn_node_based<
     let mut buf = [0; 1024];
     socket.read(&mut buf).await?;
     let req_str = String::from_utf8_lossy(&buf[..]);
+    /*
+    if req_str.contains("HTTP/2.0") {
+        match crate::h2::handle_h2(socket).await {
+            Ok(_) => (),
+            Err(e) => eprintln!("Error handling htt2 request {e}"),
+        };
+        return Ok(());
+    }*/
     let parse_res = match parse_request(req_str) {
         Ok(request) => request,
         Err(_) => {

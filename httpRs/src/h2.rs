@@ -1,13 +1,12 @@
 #![forbid(unsafe_code)]
 use bytes::Bytes;
 use h2::{server::SendResponse, *};
-use http::{response, Request};
+use http::Request;
 use std::error::Error;
 use tokio::net::TcpStream;
 
 pub async fn handle_h2(socket: TcpStream) -> Result<(), Box<dyn Error + Send + Sync>> {
     let mut connection = server::handshake(socket).await?;
-
     while let Some(result) = connection.accept().await {
         let (request, respond) = result?;
         tokio::spawn(async move {
