@@ -141,6 +141,6 @@ impl IntoMessage for StatusCode {
     }
 }
 
-pub fn respond(code: impl IntoResp + std::marker::Send + 'static) -> Box<dyn IntoResp + Send> {
-    Box::new(code)
+pub fn respond(resp: impl IntoResp + std::marker::Send + 'static) -> Box<dyn IntoResp + Send> {
+    Box::new(resp)
 }
