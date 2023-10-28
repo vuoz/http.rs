@@ -1,5 +1,4 @@
 #![forbid(unsafe_code)]
-use crate::h2;
 use crate::request::parse_request;
 use crate::request::ToRequest;
 use crate::{request::Request, response::IntoResp};

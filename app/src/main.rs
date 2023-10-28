@@ -10,14 +10,14 @@ use std::collections::HashMap;
 use std::io;
 
 fn test_handler(
-    req: Request,
+    _req: Request,
     _state: AppState,
     _extracts: HashMap<String, String>,
 ) -> HandlerResponse<'static> {
     Box::pin(async move {
         let resp_obj = JsonTest {
-            test_string: String::from("wow"),
-            page: String::from("wow"),
+            test_string: String::from("value"),
+            page: String::from("value"),
         };
         respond(Json(resp_obj))
     })
