@@ -497,14 +497,7 @@ pub async fn handle_conn_node_based<
     let mut buf = [0; 1024];
     socket.read(&mut buf).await?;
     let req_str = String::from_utf8_lossy(&buf[..]);
-    /*
-    if req_str.contains("HTTP/2.0") {
-        match crate::h2::handle_h2(socket).await {
-            Ok(_) => (),
-            Err(e) => eprintln!("Error handling htt2 request {e}"),
-        };
-        return Ok(());
-    }*/
+
     let parse_res = match parse_request(req_str) {
         Ok(request) => request,
         Err(_) => {

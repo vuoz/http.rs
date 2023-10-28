@@ -65,6 +65,8 @@ for every request
     * [x] Json  
 * [ ] TLS
 * [ ] Other HTTP Versions
+   * [ ] HTTP 2
+   * [ ] HTTP 3
 * [ ] Improve overall code quality
 * [ ] Correct Content-length handling 
 * [ ] Correct Connnection: close handling

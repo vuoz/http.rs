@@ -3,6 +3,5 @@ members = [
 "httpRs",
 "app"
 ]
-[workspace.dependencies]
 
 
