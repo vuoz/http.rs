@@ -1,5 +1,4 @@
 #![forbid(unsafe_code)]
-
 use httpRs::request::Request;
 use httpRs::response::respond;
 use httpRs::router::HandlerResponse;
@@ -8,7 +7,6 @@ use httpRs::router::Node;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::HashMap;
-
 use std::io;
 
 fn test_handler(
@@ -17,10 +15,9 @@ fn test_handler(
     _extracts: HashMap<String, String>,
 ) -> HandlerResponse<'static> {
     Box::pin(async move {
-        let data: JsonTest = req.from_json_to_struct().unwrap();
         let resp_obj = JsonTest {
-            test_string: data.test_string,
-            page: data.page,
+            test_string: String::from("wow"),
+            page: String::from("wow"),
         };
         respond(Json(resp_obj))
     })
