@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 use httpRs::request::Request;
-use httpRs::response::IntoResp;
+use httpRs::response::respond;
 use httpRs::router::HandlerResponse;
 use httpRs::router::Json;
 use httpRs::router::Node;
@@ -12,18 +12,14 @@ use std::io;
 fn test_handler(
     req: Request,
     _state: AppState,
-    extracts: HashMap<String, String>,
+    _extracts: HashMap<String, String>,
 ) -> HandlerResponse<'static> {
     Box::pin(async move {
-        //let data: JsonTest = req.from_json_to_struct().unwrap();
-        // This works but isnt really ideal, especially for the user since it is not really clear
-        // and straight forward
         let resp_obj = JsonTest {
             test_string: String::from("wow"),
             page: String::from("wow"),
         };
-        dbg!(extracts);
-        Box::new(Json(resp_obj)) as Box<dyn IntoResp + Send>
+        respond(Json(resp_obj))
     })
 }
 
