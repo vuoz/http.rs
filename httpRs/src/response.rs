@@ -140,3 +140,7 @@ impl IntoMessage for StatusCode {
             .replace(&(self.as_u16().to_string().to_owned() + " "), "")
     }
 }
+
+pub fn respond(code: impl IntoResp + std::marker::Send + 'static) -> Box<dyn IntoResp + Send> {
+    Box::new(code)
+}

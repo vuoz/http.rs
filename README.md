@@ -40,7 +40,7 @@ fn test_handler(
             test_string: data.test_string,
             page: data.page,
         };
-        Box::new(Json(resp_obj)) as Box<dyn IntoResp + Send>
+        respond(Json(resp_obj))
     })
 }
 ```
