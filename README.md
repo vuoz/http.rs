@@ -35,27 +35,73 @@ fn test_handler(
 ) -> HandlerResponse<'static> {
     Box::pin(async move {
         let data: JsonTest = req.from_json_to_struct().unwrap();
+        {...}
+    })
+}
+```
 
-        let resp_obj = JsonTest {
-            test_string: data.test_string,
-            page: data.page,
-        };
-        respond(Json(resp_obj))
+Request handler with state access
+
+```rust
+#[derive(Clone, Debug, Default)]
+pub struct AppState {
+    pub hello_page: String,
+}
+
+fn test_handler(
+    _req: Request,
+    state: AppState,//<---------
+) -> HandlerResponse<'static> {
+    Box::pin(async move {
+        respond(Html(state.hello_page))
+    })
+}
+```
+Easily respond with JSON
+
+```rust
+fn test_handler(
+    req:Request
+)-> HandlerResponse<'static>{
+    Box::pin(async move {
+        respond(Json(YourJsonStruct{...}))
+    })
+}
+```
+or HTML
+```rust
+fn test_handler(
+    req:Request
+)-> HandlerResponse<'static>{
+    Box::pin(async move {
+        respond(Html(...))
+    })
+}
+```
+
+Easily respond with StatusCodes
+```rust
+fn test_handler(
+    req:Request
+)-> HandlerResponse<'static>{
+    Box::pin(async move {
+        respond(StatusCode::Ok)
     })
 }
 ```
 
 ## Things on the agenda  
+* [ ] Comply with Rfc standard
 * [ ] Implement regex based routing  
     *  [x] This requires the addition of extractors to make use of the parameters in the Uri  
 * [ ] Simplify the api  
-* [ ] Fix bugs in the rucursive addition and traversal of Nodes   
+* [ ] Fix bugs in the recursive addition and traversal of Nodes   
 * [x] Make a state extractor so that handlers can use state  
 *  [ ] Find a better name  
 *  [ ] Might want to implement a thread pool instead of spawning a new thread  
 for every request  
 * [ ] Middleware  
-* [x]  Mutlitple extracts in one path for example: "/user/:id/time/:ts"
+* [x]  Mutlitple extracts in one path for example: ```"/user/:id/time/:ts"```
 *  [x] Move to a cargo workspace and make this a lib package
 *  [ ] Less cloning
 *  [ ] Rename Node to Router
@@ -72,6 +118,8 @@ for every request
 * [ ] Correct Connnection: close handling
 * [ ] Chunked transfer
 * [ ] Timeout requests
+* [ ] Simplify Set-Cookie
+* [ ] Simplify Redirecting
 
 ### Notes
 * This is not made for production applications

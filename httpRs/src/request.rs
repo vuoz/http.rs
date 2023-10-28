@@ -122,11 +122,16 @@ impl ToRequest for ParseRes {
 }
 
 pub fn parse_request(req_str: Cow<'_, str>) -> Result<ParseRes, ParseError> {
+    dbg!(&req_str);
     let lines: Vec<&str> = req_str.split("\r\n").collect();
     if lines.len() <= 0 {
         return Err(ParseError::NotValidRequest);
     }
-    let req_metadata = match parse_method_line(lines.get(0).unwrap()) {
+    let method_line = match lines.get(0){
+        Some(line)=>line,
+        None=>return Err(ParseError::Empty)
+    };
+    let req_metadata = match parse_method_line(&method_line) {
         Some(data) => data,
         None => return Err(ParseError::CannotParseMetaData),
     };

@@ -2,6 +2,7 @@
 use httpRs::request::Request;
 use httpRs::response::respond;
 use httpRs::router::HandlerResponse;
+use httpRs::router::Html;
 use httpRs::router::Json;
 use httpRs::router::Node;
 use serde::Deserialize;
@@ -11,15 +12,11 @@ use std::io;
 
 fn test_handler(
     _req: Request,
-    _state: AppState,
-    _extracts: HashMap<String, String>,
+    state: AppState,
+    params:HashMap<String,String>
 ) -> HandlerResponse<'static> {
     Box::pin(async move {
-        let resp_obj = JsonTest {
-            test_string: String::from("value"),
-            page: String::from("value"),
-        };
-        respond(Json(resp_obj))
+        respond(Html(state.hello_page))
     })
 }
 
