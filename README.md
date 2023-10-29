@@ -12,7 +12,7 @@ Just another web framework but in rust
 Handlers with path extracts  
 
 ```rust
-let Router = Node::new("/")
+let router = Router::new()
     .add_handler("/user/:id/ts/:time", router::Handler::Without(test_handler))
     .unwrap();
 ```
@@ -20,7 +20,7 @@ let Router = Node::new("/")
 Handlers with State  
 
 ```rust
-let Router = Node::new("/")
+let router = Router::new()
     .add_handler("/user/:id/ts/:time", router::Handler::WithState(test_handler))
     .unwrap()
     .add_state(AppState {...});
@@ -95,7 +95,7 @@ fn test_handler(
 * [ ] Implement regex based routing  
     *  [x] This requires the addition of extractors to make use of the parameters in the Uri  
 * [ ] Simplify the api  
-* [ ] Fix bugs in the recursive addition and traversal of Nodes   
+* [ ] Fix bugs in the recursive addition and traversal of Routers   
 * [x] Make a state extractor so that handlers can use state  
 *  [ ] Find a better name  
 *  [ ] Might want to implement a thread pool instead of spawning a new thread  
@@ -104,7 +104,7 @@ for every request
 * [x]  Mutlitple extracts in one path for example: ```"/user/:id/time/:ts"```
 *  [x] Move to a cargo workspace and make this a lib package
 *  [ ] Less cloning
-*  [ ] Rename Node to Router
+*  [ ] Rename Router to Router
 *  [ ] Move all generics constrians to impl blocks
 *  [x] Simplify returning Html and Json
     * [x] Html 
@@ -120,6 +120,8 @@ for every request
 * [ ] Timeout requests
 * [ ] Simplify Set-Cookie
 * [ ] Simplify Redirecting
+* [ ] Add tests
+* [ ] Encoding & Compression
 
 ### Notes
 * This is not made for production applications

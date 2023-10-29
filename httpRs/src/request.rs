@@ -52,6 +52,7 @@ pub struct RouteExtract {
     pub identifier: String,
     pub value: String,
 }
+#[derive(Debug)]
 pub enum ParseError {
     Empty,
     NotValidRequest,
@@ -122,14 +123,13 @@ impl ToRequest for ParseRes {
 }
 
 pub fn parse_request(req_str: Cow<'_, str>) -> Result<ParseRes, ParseError> {
-    dbg!(&req_str);
     let lines: Vec<&str> = req_str.split("\r\n").collect();
     if lines.len() <= 0 {
         return Err(ParseError::NotValidRequest);
     }
-    let method_line = match lines.get(0){
-        Some(line)=>line,
-        None=>return Err(ParseError::Empty)
+    let method_line = match lines.get(0) {
+        Some(line) => line,
+        None => return Err(ParseError::Empty),
     };
     let req_metadata = match parse_method_line(&method_line) {
         Some(data) => data,
@@ -150,17 +150,30 @@ pub fn parse_request(req_str: Cow<'_, str>) -> Result<ParseRes, ParseError> {
         };
         headers.insert(header.key, header.val);
     }
-    let body = match lines.get(j + 1) {
-        Some(line) => {
-            let body_parsed = match parse_body(line) {
-                Some(data) => data,
-                None => Body::None,
-            };
-            body_parsed
-        }
-        None => Body::None,
-    };
 
+    let body;
+    if req_metadata.method == "POST" || req_metadata.method == "PUT" {
+        let content_lenght = match headers.get("content-length") {
+            Some(l) => match l.parse() {
+                Err(_) => return Err(ParseError::NotValidRequest),
+                Ok(l) => l,
+            },
+            None => return Err(ParseError::NotValidRequest),
+        };
+
+        body = match lines.get(j + 1) {
+            Some(line) => {
+                let body_parsed = match parse_body(line, content_lenght) {
+                    Some(data) => data,
+                    None => Body::None,
+                };
+                body_parsed
+            }
+            None => Body::None,
+        };
+    } else {
+        body = Body::None;
+    }
     let mut req = match headers.get("content-type") {
         Some(header) => {
             let body = parse_body_new(body, header).unwrap();

@@ -87,6 +87,152 @@ pub struct RoutingResult<T: std::clone::Clone> {
     pub extract: Option<HashMap<String, String>>,
 }
 #[derive(Debug, Default)]
+pub struct Router<T: Clone + Default + Send + std::marker::Sync> {
+    pub routes: Node<T>,
+    pub fallback: Option<Handler<T>>,
+}
+impl<T> Router<T>
+where
+    T: Sync,
+    T: Clone,
+    T: Default,
+    T: Send,
+    T: std::fmt::Debug,
+{
+    pub fn new() -> Self {
+        Router {
+            routes: Node::new("/"),
+            fallback: None,
+        }
+    }
+    async fn serve(&'static self, addr: &str) -> ! {
+        let listener = match TcpListener::bind(addr).await {
+            Ok(listener) => listener,
+            Err(e) => panic!("Cannot create listener Error: {e} "),
+        };
+        loop {
+            let (socket, _) = match listener.accept().await {
+                Ok((socket, other_thing)) => (socket, other_thing),
+                Err(e) => panic!("Canot accept connection Error: {e}"),
+            };
+
+            tokio::spawn(async move {
+                //                                                Might want to avoid cloning the
+                //                                                state for every connection, maybe
+                //                                                an Arc::clone would be better since it
+                //                                                does not create new memory
+                //
+                match handle_conn_node_based(
+                    socket,
+                    &self.routes,
+                    self.fallback.clone(),
+                    self.routes.state.clone(),
+                )
+                .await
+                {
+                    Ok(_) => (),
+                    Err(e) => {
+                        panic!("Cannot handle incomming connection: {e} \n")
+                    }
+                }
+            });
+        }
+    }
+    async fn serve_tls(&'static self,addr: &str,path_to_cert:&str)->!{
+        // need to implement loading the certs
+        // This implementation is very close to the example in the tokio_rustls crate
+        let cert_chain = crate::tls::load_certificates_from_pem(path_to_cert).unwrap();
+        let key_der = crate::tls::load_private_key_from_file(path_to_cert).unwrap();
+        let config = match rustls::ServerConfig::builder()
+            .with_safe_defaults()
+            .with_no_client_auth()
+            .with_single_cert(cert_chain, key_der)
+            .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))
+        {
+            Err(e) => panic!("{e}"),
+            Ok(config) => config,
+        };
+        let listener = match TcpListener::bind(addr).await {
+            Ok(listener) => listener,
+            Err(e) => panic!("Cannot create listener Error: {e} "),
+        };
+        let acceptor = TlsAcceptor::from(Arc::new(config));
+        loop {
+            let (socket, _) = match listener.accept().await {
+                Ok((socket, other_thing)) => (socket, other_thing),
+                Err(e) => panic!("Canot accept connection Error: {e}"),
+            };
+            let acceptor = acceptor.clone();
+            tokio::spawn(async move {
+                let stream = match acceptor.accept(socket).await {
+                    Ok(stream) => stream,
+                    Err(e) => panic!("Cannot accept connection {e}"),
+                };
+                match crate::tls::handle_conn_node_based_tls(
+                    tokio_rustls::TlsStream::Server(stream),
+                    &self.routes,
+                    None,
+                    self.routes.state.clone(),
+                )
+                .await
+                {
+                    Ok(()) => (),
+                    Err(e) => panic!("Cannot handle incomming connection: {e}"),
+                };
+            });
+    }
+
+    }
+    pub fn add_handler(
+        &mut self,
+        path: &str,
+        handler: Handler<T>,
+    ) -> std::result::Result<Self, ()> {
+        let mut router = match self.routes.add_handler(path, handler) {
+            Err(_) => return Err(()),
+            Ok(r) => r,
+        };
+        Ok(Router {
+            routes: std::mem::take(&mut router),
+            fallback: self.fallback.clone(),
+        })
+    }
+    pub fn fallback(mut self, func: Handler<T>) -> Self {
+        self.fallback = Some(func);
+        self
+    }
+    pub fn with_state(mut self, state: T) -> Self {
+        self.routes.state = Some(state);
+        self
+    }
+
+    pub fn make_into_serveable(self) -> RouterServable<T> {
+        let boxed = Box::new(self);
+        let leaked = Box::leak(boxed);
+        RouterServable { router: leaked }
+    }
+}
+#[derive(Debug)]
+pub struct RouterServable<T: Clone + Default + Send + std::marker::Sync + 'static> {
+    router: &'static Router<T>,
+}
+impl<T> RouterServable<T>
+where
+    T: Sync,
+    T: Clone,
+    T: Default,
+    T: Send,
+    T: std::fmt::Debug,
+{
+    pub async fn serve(self, addr: &str) -> ! {
+        self.router.serve(addr).await
+    }
+    pub async fn serve_tls(self,addr: &str,path_to_cert: &str)->!{
+        self.router.serve_tls(addr, path_to_cert).await
+    }
+}
+
+#[derive(Debug, Default)]
 pub struct Node<T: Clone + Default + Send + std::marker::Sync> {
     pub subpath: String,
     pub children: Option<Box<Vec<Box<Node<T>>>>>,
@@ -259,50 +405,7 @@ where
             }
         };
     }
-    pub async fn serve_tls(&'static self, addr: &str, path_to_cert: &str) -> ! {
-        // need to implement loading the certs
-        // This implementation is very close to the example in the tokio_rustls crate
-        let cert_chain = crate::tls::load_certificates_from_pem(path_to_cert).unwrap();
-        let key_der = crate::tls::load_private_key_from_file(path_to_cert).unwrap();
-        let config = match rustls::ServerConfig::builder()
-            .with_safe_defaults()
-            .with_no_client_auth()
-            .with_single_cert(cert_chain, key_der)
-            .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))
-        {
-            Err(e) => panic!("{e}"),
-            Ok(config) => config,
-        };
-        let listener = match TcpListener::bind(addr).await {
-            Ok(listener) => listener,
-            Err(e) => panic!("Cannot create listener Error: {e} "),
-        };
-        let acceptor = TlsAcceptor::from(Arc::new(config));
-        loop {
-            let (socket, _) = match listener.accept().await {
-                Ok((socket, other_thing)) => (socket, other_thing),
-                Err(e) => panic!("Canot accept connection Error: {e}"),
-            };
-            let acceptor = acceptor.clone();
-            tokio::spawn(async move {
-                let stream = match acceptor.accept(socket).await {
-                    Ok(stream) => stream,
-                    Err(e) => panic!("Cannot accept connection {e}"),
-                };
-                match crate::tls::handle_conn_node_based_tls(
-                    tokio_rustls::TlsStream::Server(stream),
-                    &self,
-                    None,
-                    self.state.clone(),
-                )
-                .await
-                {
-                    Ok(()) => (),
-                    Err(e) => panic!("Cannot handle incomming connection: {e}"),
-                };
-            });
-        }
-    }
+   
 }
 
 fn pub_walk_add_node<
@@ -490,16 +593,16 @@ pub async fn handle_conn_node_based<
 >(
     mut socket: TcpStream,
     handlers: &Node<T>,
-    fallback: Option<HandlerType>,
+    fallback: Option<Handler<T>>,
     state: Option<T>,
 ) -> std::io::Result<()> {
     let mut buf = [0; 1024];
     socket.read(&mut buf).await?;
     let req_str = String::from_utf8_lossy(&buf[..]);
-
     let parse_res = match parse_request(req_str) {
         Ok(request) => request,
-        Err(_) => {
+        Err(e) => {
+            println!("{e:?}");
             send_error_response(socket, StatusCode::BAD_REQUEST).await?;
             return Ok(());
         }
@@ -510,7 +613,13 @@ pub async fn handle_conn_node_based<
         Some(res) => res,
         None => match fallback {
             Some(fallback) => {
-                let res = fallback(parse_res.to_request()).await;
+                let res = match fallback.handle(parse_res.to_request(), state, None).await {
+                    Some(res) => res,
+                    None => {
+                        send_error_response(socket, StatusCode::NOT_FOUND).await?;
+                        return Ok(());
+                    }
+                };
                 let resp = res.into_response();
                 socket.write_all(resp.as_slice()).await?;
                 socket.flush().await?;

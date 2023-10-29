@@ -63,14 +63,17 @@ pub fn parse_json(inpt: &str) -> Option<ContentType> {
     }
     return Some(ContentType::Json(text_part));
 }
-pub fn parse_body(inpt: &str) -> Option<Body> {
-    let parts: Vec<String> = inpt.split("\0").map(|part| part.to_string()).collect();
-    let text_part = parts.get(0)?.clone();
+pub fn parse_body(inpt: &str,lenght:u32) -> Option<Body> {
+    let mut parts: Vec<String> = inpt.split("\0").map(|part| part.to_string()).collect();
+    let text_part = parts.get_mut(0)?;
+    if text_part.len() != lenght as usize{
+        return None;
+    }
     if text_part == "" {
         return None;
     }
 
-    return Some(Body::Text(text_part));
+    return Some(Body::Text(std::mem::take(text_part)));
 }
 
 pub fn parse_header(inpt: &str) -> Option<Header> {
