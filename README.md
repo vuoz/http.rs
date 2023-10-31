@@ -122,6 +122,8 @@ for every request
 * [ ] Simplify Redirecting
 * [ ] Add tests
 * [ ] Encoding & Compression
+* [ ] Cookie access
+* [ ] Proc macro that implements IntoResp for all tuple combinations
 
 ### Notes
 * This is not made for production applications

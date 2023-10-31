@@ -2,6 +2,7 @@
 use http::StatusCode;
 use httpRs::request::Request;
 use httpRs::response::respond;
+use httpRs::router::Cookie;
 use httpRs::router::HandlerResponse;
 use httpRs::router::Router;
 use serde::Deserialize;
@@ -11,7 +12,18 @@ use std::io;
 fn test_handler(_req: Request, _state: AppState) -> HandlerResponse<'static> {
     Box::pin(async move {
         //
-        respond((StatusCode::OK, "value".to_string()))
+        let cookie = Cookie {
+            name: "name",
+            value: "placeholder",
+            domain: None,
+            same_site: None,
+            expires: None,
+            max_age: None,
+            secure: false,
+            http_only: false,
+            path: None,
+        };
+        respond((StatusCode::OK, cookie, "value".to_string()))
     })
 }
 fn fallback(_req: Request) -> HandlerResponse<'static> {

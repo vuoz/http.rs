@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use http::StatusCode;
 
-use crate::router::{self, Json};
+use crate::router::{self, Cookie, Json};
 
 pub trait IntoResp {
     fn into_response(&self) -> Vec<u8>;
@@ -126,6 +126,19 @@ impl IntoResp for (StatusCode, HashMap<String, String>, String) {
             self.0.into_status_message(),
             self.2.len(),
             headers_string + "\r\n",
+            self.2
+        );
+        Vec::from(response)
+    }
+}
+impl IntoResp for (StatusCode, Cookie, String) {
+    fn into_response(&self) -> Vec<u8> {
+        let response = format!(
+            "HTTP/1.1 {} {}\r\nContent-Length: {}\r\n{}\r\n{}",
+            self.0.as_u16(),
+            self.0.into_status_message(),
+            self.2.len(),
+            self.1.to_header() + "\r\n",
             self.2
         );
         Vec::from(response)

@@ -79,8 +79,69 @@ where
         }
     }
 }
+#[derive(Debug, Clone)]
+pub enum SameSite {
+    Strict,
+    Lax,
+    None,
+}
 pub struct Html(pub String);
 pub struct Json<T: serde::Serialize>(pub T);
+#[derive(Debug)]
+pub struct Cookie {
+    pub name: &'static str,
+    pub value: &'static str,
+    pub domain: Option<&'static str>,
+    pub same_site: Option<SameSite>,
+    pub expires: Option<std::time::Duration>,
+    pub max_age: Option<u32>,
+    pub secure: bool,
+    pub http_only: bool,
+    pub path: Option<&'static str>,
+}
+impl Cookie {
+    pub fn to_header(&self) -> String {
+        format!(
+            "Set-Cookie: {}={};{}{}{}{}{}{}{}",
+            self.name,
+            self.value,
+            match &self.domain {
+                Some(domain) => "Domain=".to_owned() + domain + ";",
+                None => "".to_string(),
+            },
+            match &self.same_site {
+                Some(same_site) => {
+                    match same_site {
+                        SameSite::Strict => "SameSite: Strict;",
+                        SameSite::Lax => "SameSite: Lax;",
+                        SameSite::None => "SameSite: None;",
+                    }
+                }
+                None => "",
+            },
+            match &self.expires {
+                None => "".to_string(),
+                Some(expires) => expires.as_nanos().to_string(),
+            },
+            match self.max_age {
+                Some(age) => age.to_string(),
+                None => "".to_string(),
+            },
+            match &self.secure {
+                true => "Secure",
+                false => "",
+            },
+            match &self.http_only {
+                true => "HttpOnly",
+                false => "",
+            },
+            match &self.path {
+                Some(path) => "Path=".to_owned() + path,
+                None => "".to_string(),
+            }
+        )
+    }
+}
 
 pub struct RoutingResult<T: std::clone::Clone> {
     pub handler: Handler<T>,
@@ -138,7 +199,7 @@ where
             });
         }
     }
-    async fn serve_tls(&'static self,addr: &str,path_to_cert:&str)->!{
+    async fn serve_tls(&'static self, addr: &str, path_to_cert: &str) -> ! {
         // need to implement loading the certs
         // This implementation is very close to the example in the tokio_rustls crate
         let cert_chain = crate::tls::load_certificates_from_pem(path_to_cert).unwrap();
@@ -180,8 +241,7 @@ where
                     Err(e) => panic!("Cannot handle incomming connection: {e}"),
                 };
             });
-    }
-
+        }
     }
     pub fn add_handler(
         &mut self,
@@ -227,7 +287,7 @@ where
     pub async fn serve(self, addr: &str) -> ! {
         self.router.serve(addr).await
     }
-    pub async fn serve_tls(self,addr: &str,path_to_cert: &str)->!{
+    pub async fn serve_tls(self, addr: &str, path_to_cert: &str) -> ! {
         self.router.serve_tls(addr, path_to_cert).await
     }
 }
@@ -405,7 +465,6 @@ where
             }
         };
     }
-   
 }
 
 fn pub_walk_add_node<
