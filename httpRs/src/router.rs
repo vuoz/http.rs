@@ -88,6 +88,7 @@ pub enum SameSite {
 pub struct Html(pub String);
 pub struct Json<T: serde::Serialize>(pub T);
 #[derive(Debug)]
+//Still need to correctly implement expires and max-age
 pub struct Cookie {
     pub name: &'static str,
     pub value: &'static str,
@@ -100,6 +101,19 @@ pub struct Cookie {
     pub path: Option<&'static str>,
 }
 impl Cookie {
+    pub fn new(name: &'static str, value: &'static str) -> Self {
+        Cookie {
+            name,
+            value,
+            domain: None,
+            same_site: None,
+            expires: None,
+            max_age: None,
+            secure: true,
+            http_only: true,
+            path: None,
+        }
+    }
     pub fn to_header(&self) -> String {
         format!(
             "Set-Cookie: {}={};{}{}{}{}{}{}{}",

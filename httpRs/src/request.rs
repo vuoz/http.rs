@@ -64,6 +64,7 @@ pub struct Request {
     //pub extract: Option<HashMap<String, String>>,
     pub body: Option<ContentType>,
     pub headers: HashMap<String, String>,
+    //pub cookies: Option<HashMap<String, String>>,
 }
 impl Request {
     pub fn from_json_to_struct<T: DeserializeOwned>(self) -> std::io::Result<T> {
@@ -100,6 +101,42 @@ impl Request {
         };
         let data: T = serde_json::from_str(&json_string)?;
         Ok(data)
+    }
+    pub fn cookies(&self) -> Option<HashMap<String, String>> {
+        match &self.headers.get("cookie") {
+            Some(cookies) => {
+                let cookies_separated: Vec<&str> = cookies.split(";").collect();
+                let mut cookie_map = HashMap::new();
+                let _: Vec<&str> = cookies_separated
+                    .into_iter()
+                    .take_while(|cookie| {
+                        let parts: Vec<&str> = cookie.split("=").collect();
+                        if parts.len() != 2 {
+                            return false;
+                        }
+                        let mut name = match parts.get(0) {
+                            Some(name) => name.to_string(),
+                            None => return false,
+                        };
+                        if name.contains(" ") {
+                            name = name.replace(" ", "");
+                        }
+                        let mut value = match parts.get(1) {
+                            Some(name) => name.to_string(),
+                            None => return false,
+                        };
+                        if value.contains(" ") {
+                            value = value.replace(" ", "");
+                        }
+                        cookie_map.insert(name, value);
+                        return true;
+                    })
+                    .collect();
+
+                return Some(cookie_map);
+            }
+            None => return None,
+        }
     }
 }
 #[derive(Debug, Clone)]

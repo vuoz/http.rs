@@ -11,18 +11,7 @@ use std::io;
 
 fn test_handler(_req: Request, _state: AppState) -> HandlerResponse<'static> {
     Box::pin(async move {
-        //
-        let cookie = Cookie {
-            name: "name",
-            value: "placeholder",
-            domain: None,
-            same_site: None,
-            expires: None,
-            max_age: None,
-            secure: false,
-            http_only: false,
-            path: None,
-        };
+        let cookie = Cookie::new("value", "placeholder");
         respond((StatusCode::OK, cookie, "value".to_string()))
     })
 }

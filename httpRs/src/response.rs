@@ -66,6 +66,18 @@ impl IntoResp for (StatusCode, String) {
         return Vec::from(response);
     }
 }
+impl IntoResp for (StatusCode, &str) {
+    fn into_response(&self) -> Vec<u8> {
+        let response = format!(
+            "HTTP/1.1 {} {}\r\nContent-Length: {}\r\n\r\n{}",
+            self.0.as_u16(),
+            self.0.into_status_message(),
+            self.1.len(),
+            self.1
+        );
+        return Vec::from(response);
+    }
+}
 impl IntoResp for StatusCode {
     fn into_response(&self) -> Vec<u8> {
         let response = format!(
