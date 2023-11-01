@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+use crate::router::{Redirect, ToHeader};
 use std::collections::HashMap;
 
 use http::StatusCode;
@@ -20,6 +21,16 @@ impl IntoResp for router::Html {
             self.0,
         );
         return Vec::from(response);
+    }
+}
+impl IntoResp for (Cookie, Redirect) {
+    fn into_response(&self) -> Vec<u8> {
+        let response = format!(
+            "HTTP/1.1 301 Moved Permanently\r\nContent-Length: {}\r\n{}\r\n",
+            0.to_string(),
+            self.0.to_header() + "\r\n" + &self.1.to_header() + "\r\n",
+        );
+        Vec::from(response)
     }
 }
 impl IntoResp for &str {
@@ -161,8 +172,8 @@ trait IntoMessage {
 }
 impl IntoMessage for StatusCode {
     fn into_status_message(&self) -> String {
-        self.as_str()
-            .replace(&(self.as_u16().to_string().to_owned() + " "), "")
+        self.to_string()
+            .replace(&format!("{} ", &self.as_u16().to_string()), "")
     }
 }
 

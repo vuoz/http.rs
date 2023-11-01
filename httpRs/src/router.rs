@@ -79,6 +79,18 @@ where
         }
     }
 }
+pub trait ToHeader {
+    fn to_header(&self) -> String;
+}
+#[derive(Debug)]
+pub struct Redirect(pub &'static str);
+impl ToHeader for Redirect {
+    fn to_header(&self) -> String {
+        // you could do input validation that checks wether its a  correct path but this is
+        // something for another time
+        "Location:".to_owned() + self.0
+    }
+}
 #[derive(Debug, Clone)]
 pub enum SameSite {
     Strict,
@@ -100,21 +112,8 @@ pub struct Cookie {
     pub http_only: bool,
     pub path: Option<&'static str>,
 }
-impl Cookie {
-    pub fn new(name: &'static str, value: &'static str) -> Self {
-        Cookie {
-            name,
-            value,
-            domain: None,
-            same_site: None,
-            expires: None,
-            max_age: None,
-            secure: true,
-            http_only: true,
-            path: None,
-        }
-    }
-    pub fn to_header(&self) -> String {
+impl ToHeader for Cookie {
+    fn to_header(&self) -> String {
         format!(
             "Set-Cookie: {}={};{}{}{}{}{}{}{}",
             self.name,
@@ -142,18 +141,33 @@ impl Cookie {
                 None => "".to_string(),
             },
             match &self.secure {
-                true => "Secure",
+                true => "Secure;",
                 false => "",
             },
             match &self.http_only {
-                true => "HttpOnly",
+                true => "HttpOnly;",
                 false => "",
             },
             match &self.path {
-                Some(path) => "Path=".to_owned() + path,
+                Some(path) => "Path=".to_owned() + path + ";",
                 None => "".to_string(),
             }
         )
+    }
+}
+impl Cookie {
+    pub fn new(name: &'static str, value: &'static str) -> Self {
+        Cookie {
+            name,
+            value,
+            domain: None,
+            same_site: None,
+            expires: None,
+            max_age: None,
+            secure: true,
+            http_only: true,
+            path: None,
+        }
     }
 }
 

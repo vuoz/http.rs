@@ -12,9 +12,14 @@ use std::io;
 fn test_handler(_req: Request, _state: AppState) -> HandlerResponse<'static> {
     Box::pin(async move {
         let cookie = Cookie::new("value", "placeholder");
-        respond((StatusCode::OK, cookie, "value".to_string()))
+        respond((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            cookie,
+            "value".to_owned(),
+        ))
     })
 }
+
 fn fallback(_req: Request) -> HandlerResponse<'static> {
     Box::pin(async move { respond((StatusCode::NOT_FOUND, "You seem lost".to_string())) })
 }
