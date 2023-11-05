@@ -7,9 +7,13 @@ pub mod router;
 pub mod tls;
 #[cfg(test)]
 mod tests {
-    use crate::request::*;
+    use http::StatusCode;
+
+    use crate::{request::*, router};
 
     use crate::parse::parse_method_line;
+    use crate::response::respond;
+    use crate::router::{HandlerResponse, Node};
 
     #[test]
     fn parse() {
@@ -45,6 +49,25 @@ mod tests {
                 None => panic!("Test failed"),
             };
             assert_eq!(parse_res, i.1)
+        }
+    }
+    #[test]
+    fn route() {
+        fn test_fn(_req: Request) -> HandlerResponse<'static> {
+            Box::pin(async move { respond(StatusCode::OK) })
+        }
+        let node = Node::<()>::new("/")
+            .add_handler("/test", router::Handler::Without(test_fn))
+            .unwrap()
+            .add_handler("/value/:user/wow/:ts", router::Handler::Without(test_fn))
+            .unwrap();
+        match node.get_handler(String::from("/test")) {
+            None => panic!("test failure"),
+            Some(_) => (),
+        }
+        match node.get_handler(String::from("/value/user1/wow/1235")) {
+            None => panic!("test failure"),
+            Some(_) => (),
         }
     }
 }
