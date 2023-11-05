@@ -60,12 +60,18 @@ mod tests {
             .add_handler("/test", router::Handler::Without(test_fn))
             .unwrap()
             .add_handler("/value/:user/wow/:ts", router::Handler::Without(test_fn))
+            .unwrap()
+            .add_handler("/test/:user", router::Handler::Without(test_fn))
             .unwrap();
         match node.get_handler(String::from("/test")) {
             None => panic!("test failure"),
             Some(_) => (),
         }
         match node.get_handler(String::from("/value/user1/wow/1235")) {
+            None => panic!("test failure"),
+            Some(_) => (),
+        }
+        match node.get_handler(String::from("/test/user1")) {
             None => panic!("test failure"),
             Some(_) => (),
         }
