@@ -11,6 +11,8 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio_rustls::TlsAcceptor;
+// This list isn't exhaustive will add to it in the future
+const LIST_UNSUPPORTED: &[char] = &['.', '&', '(', ')', '=', '}', '{', '$'];
 
 // Middleware definitions
 pub type MiddlewareResponse<'a> =
@@ -403,6 +405,14 @@ where
         if path == "/" {
             self.handler = Some(handler);
             return Ok(Box::new(std::mem::take(self)));
+        }
+        for i in LIST_UNSUPPORTED.into_iter() {
+            if path.contains(*i) {
+                panic!(
+                    "Your path contains a value that is unsupported. Char: {}",
+                    i
+                );
+            }
         }
 
         let res = pub_walk_add_node(self, path.to_string(), handler);
