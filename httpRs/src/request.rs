@@ -161,7 +161,6 @@ impl ToRequest for ParseRes {
 
 pub fn parse_request(req_str: Cow<'_, str>) -> Result<ParseRes, ParseError> {
     let lines: Vec<&str> = req_str.split("\r\n").collect();
-    dbg!(&lines);
     if lines.len() <= 0 {
         return Err(ParseError::NotValidRequest);
     }

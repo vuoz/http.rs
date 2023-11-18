@@ -86,6 +86,11 @@ pub trait ToHeader {
 }
 #[derive(Debug)]
 pub struct Redirect(pub &'static str);
+impl Redirect {
+    pub fn new(loc: &'static str) -> Self {
+        Self(loc)
+    }
+}
 impl ToHeader for Redirect {
     fn to_header(&self) -> String {
         // you could do input validation that checks wether its a  correct path but this is

@@ -2,22 +2,15 @@
 use http::StatusCode;
 use httpRs::request::Request;
 use httpRs::response::respond;
-use httpRs::router::Cookie;
 use httpRs::router::HandlerResponse;
+use httpRs::router::Redirect;
 use httpRs::router::Router;
 use serde::Deserialize;
 use serde::Serialize;
 use std::io;
 
 fn test_handler(_req: Request, _state: AppState) -> HandlerResponse<'static> {
-    Box::pin(async move {
-        let cookie = Cookie::new("value", "placeholder");
-        respond((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            cookie,
-            "value".to_owned(),
-        ))
-    })
+    Box::pin(async move { respond(Redirect::new("/value")) })
 }
 
 fn fallback(_req: Request) -> HandlerResponse<'static> {

@@ -89,6 +89,18 @@ impl IntoResp for (StatusCode, &str) {
         return Vec::from(response);
     }
 }
+impl IntoResp for Redirect {
+    fn into_response(&self) -> Vec<u8> {
+        let response = format!(
+            "HTTP/1.1 {} {}\r\nContent-Length: {}\r\n{}\r\n",
+            301,
+            "Moved Permanently",
+            0,
+            self.to_header() + "\r\n"
+        );
+        return Vec::from(response);
+    }
+}
 impl IntoResp for StatusCode {
     fn into_response(&self) -> Vec<u8> {
         let response = format!(
