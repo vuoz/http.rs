@@ -40,11 +40,20 @@ pub enum TypeOfData {
     Body(Body),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct MetaData {
     pub method: String,
     pub path: String,
     pub version: String,
+}
+impl MetaData {
+    pub fn new() -> Self {
+        MetaData {
+            method: String::new(),
+            path: String::new(),
+            version: String::new(),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -67,6 +76,13 @@ pub struct Request {
     //pub cookies: Option<HashMap<String, String>>,
 }
 impl Request {
+    pub fn new() -> Self {
+        Request {
+            metadata: MetaData::new(),
+            body: None,
+            headers: HashMap::new(),
+        }
+    }
     pub fn from_json_to_struct<T: DeserializeOwned>(self) -> std::io::Result<T> {
         let body = match self.body {
             None => return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "no body")),

@@ -1,10 +1,14 @@
 #![forbid(unsafe_code)]
+use crate::parse;
+use crate::parse::NewRequestType;
 use crate::request::parse_request;
 use crate::request::ToRequest;
 use crate::{request::Request, response::IntoResp};
 use async_std::sync::Arc;
+use bytes::Bytes;
 use http::StatusCode;
 use std::pin::Pin;
+use std::vec;
 use std::{collections::HashMap, future::Future};
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
@@ -15,18 +19,21 @@ use tokio_rustls::TlsAcceptor;
 const LIST_UNSUPPORTED: &[char] = &['.', '&', '(', ')', '=', '}', '{', '$'];
 
 // Middleware definitions
+/*
 pub type MiddlewareResponse<'a> =
     Pin<Box<dyn Future<Output = Result<(Request, Box<dyn Clone>), StatusCode>> + Send + 'a>>;
 
 pub type MiddleWareFunctionType<T> =
     fn(Request, T, Option<Box<dyn Clone>>) -> MiddlewareResponse<'static>;
 
-pub type HandlerResponse<'a> = Pin<Box<dyn Future<Output = Box<dyn IntoResp + Send>> + Send + 'a>>;
-pub type HandlerType = fn(Request) -> HandlerResponse<'static>;
+*/
 
-pub type HandlerTypeState<T> = fn(Request, T) -> HandlerResponse<'static>;
+pub type HandlerResponse<'a> = Pin<Box<dyn Future<Output = Box<dyn IntoResp + Send>> + Send + 'a>>;
+pub type HandlerType = fn(NewRequestType) -> HandlerResponse<'static>;
+
+pub type HandlerTypeState<T> = fn(NewRequestType, T) -> HandlerResponse<'static>;
 pub type HandlerTypeStateAndExtract<T> =
-    fn(Request, T, HashMap<String, String>) -> HandlerResponse<'static>;
+    fn(NewRequestType, T, HashMap<String, String>) -> HandlerResponse<'static>;
 
 #[derive(Debug, Default, Clone)]
 pub enum Handler<T: std::clone::Clone> {
@@ -42,7 +49,7 @@ where
 {
     pub async fn handle(
         self,
-        req: Request,
+        req: NewRequestType,
         state: Option<T>,
         extracts: Option<HashMap<String, String>>,
     ) -> Option<Box<dyn IntoResp + Send>> {
@@ -698,24 +705,17 @@ pub async fn handle_conn_node_based<
     fallback: Option<Handler<T>>,
     state: Option<T>,
 ) -> std::io::Result<()> {
-    let mut buf = [0; 1024];
-    socket.read(&mut buf).await?;
+    // did this to avoid leftover zeros at the end;
+    let mut buf = Vec::with_capacity(1024);
+    socket.read_buf(&mut buf).await?;
     let req_str = String::from_utf8_lossy(&buf[..]);
-    let parse_res = match parse_request(req_str) {
-        Ok(request) => request,
-        Err(e) => {
-            println!("{e:?}");
-            send_error_response(socket, StatusCode::BAD_REQUEST).await?;
-            return Ok(());
-        }
-    };
+    let res = parse::parse_request(&req_str).unwrap();
 
-    let routing_res: RoutingResult<T> = match handlers.get_handler(parse_res.metadata.path.clone())
-    {
+    let routing_res: RoutingResult<T> = match handlers.get_handler(res.metadata.path.clone()) {
         Some(res) => res,
         None => match fallback {
             Some(fallback) => {
-                let res = match fallback.handle(parse_res.to_request(), state, None).await {
+                let res = match fallback.handle(res, state, None).await {
                     Some(res) => res,
                     None => {
                         send_error_response(socket, StatusCode::NOT_FOUND).await?;
@@ -737,10 +737,10 @@ pub async fn handle_conn_node_based<
     let handler = routing_res.handler;
 
     // will try to find another solution other to cloning this map
-    let map_clone = parse_res.extract.clone();
+    let map_clone = res.params.clone();
     let res = match handler
         .handle(
-            parse_res.to_request(),
+            res,
             state,
             // This is needed since there are two ways extracts can be added to the request
             // The first being for example /user/:id which comes from the router
@@ -765,9 +765,11 @@ pub async fn handle_conn_node_based<
         None => return send_error_response(socket, StatusCode::NOT_FOUND).await,
     };
     let response = res.into_response();
-    let clone = response.clone();
-    socket.write_all(clone.as_slice()).await?;
+
+    socket.write_all(response.as_slice()).await?;
+
     socket.flush().await?;
+
     socket.shutdown().await?;
     Ok(())
 }

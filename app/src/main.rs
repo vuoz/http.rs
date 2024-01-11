@@ -1,19 +1,24 @@
 #![forbid(unsafe_code)]
 use http::StatusCode;
-use httpRs::request::Request;
+use httpRs::parse::NewRequestType;
 use httpRs::response::respond;
 use httpRs::router::HandlerResponse;
-use httpRs::router::Redirect;
+use httpRs::router::Html;
 use httpRs::router::Router;
 use serde::Deserialize;
 use serde::Serialize;
+use std::collections::HashMap;
 use std::io;
 
-fn test_handler(_req: Request, _state: AppState) -> HandlerResponse<'static> {
-    Box::pin(async move { respond(Redirect::new("/value")) })
+fn test_handler(
+    _req: NewRequestType,
+    state: AppState,
+    _extract: HashMap<String, String>,
+) -> HandlerResponse<'static> {
+    Box::pin(async move { respond(Html(state.hello_page)) })
 }
 
-fn fallback(_req: Request) -> HandlerResponse<'static> {
+fn fallback(_req: NewRequestType) -> HandlerResponse<'static> {
     Box::pin(async move { respond((StatusCode::NOT_FOUND, "You seem lost".to_string())) })
 }
 
@@ -34,7 +39,7 @@ async fn main() -> io::Result<()> {
     let router = Router::new()
         .add_handler(
             "/wow/:user",
-            httpRs::router::Handler::WithState(test_handler),
+            httpRs::router::Handler::WithStateAndExtract(test_handler),
         )
         .unwrap()
         .with_state(AppState { hello_page: file })

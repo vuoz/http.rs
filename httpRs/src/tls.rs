@@ -43,23 +43,16 @@ pub async fn handle_conn_node_based_tls<
     fallback: Option<HandlerType>,
     state: Option<T>,
 ) -> std::io::Result<()> {
-    let mut buf = [0; 1024];
-    socket.read(&mut buf).await?;
+    let mut buf = Vec::with_capacity(1024);
+    socket.read_buf(&mut buf).await?;
     let req_str = String::from_utf8_lossy(&buf[..]);
-    let parse_res = match parse_request(req_str) {
-        Ok(request) => request,
-        Err(_) => {
-            send_error_response_tls(socket, StatusCode::BAD_REQUEST).await?;
-            return Ok(());
-        }
-    };
+    let res = crate::parse::parse_request(&req_str).unwrap();
 
-    let routing_res: RoutingResult<T> = match handlers.get_handler(parse_res.metadata.path.clone())
-    {
+    let routing_res: RoutingResult<T> = match handlers.get_handler(res.metadata.path.clone()) {
         Some(res) => res,
         None => match fallback {
             Some(fallback) => {
-                let res = fallback(parse_res.to_request()).await;
+                let res = fallback(res).await;
                 let resp = res.into_response();
                 socket.write_all(resp.as_slice()).await?;
                 socket.flush().await?;
@@ -75,10 +68,10 @@ pub async fn handle_conn_node_based_tls<
     let handler = routing_res.handler;
 
     // will try to find another solution other to cloning this map
-    let map_clone = parse_res.extract.clone();
+    let map_clone = res.params.clone();
     let res = match handler
         .handle(
-            parse_res.to_request(),
+            res,
             state,
             // This is needed since there are two ways extracts can be added to the request
             // The first being for example /user/:id which comes from the router
