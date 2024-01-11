@@ -15,14 +15,18 @@ fn test_handler(
     state: AppState,
     _extract: HashMap<String, String>,
 ) -> HandlerResponse<'static> {
-    Box::pin(async move { respond(Html(state.hello_page)) })
+    Box::pin(async move {
+        let json_body: JsonTest = _req.from_json_to_struct().unwrap();
+        println!("{:?}", json_body);
+        respond(Html(state.hello_page))
+    })
 }
 
 fn fallback(_req: NewRequestType) -> HandlerResponse<'static> {
     Box::pin(async move { respond((StatusCode::NOT_FOUND, "You seem lost".to_string())) })
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct JsonTest {
     pub test_string: String,
     pub page: String,

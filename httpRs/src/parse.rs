@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 use crate::types::Method;
 use bytes::BytesMut;
+use serde::de::DeserializeOwned;
 
 use crate::request::Body;
 use crate::request::ContentType;
@@ -13,6 +14,7 @@ use crate::request::TypeOfData;
 use std::borrow::Cow;
 
 use std::collections::HashMap;
+// now deprecated
 pub fn parse_params(inpt: &str) -> Option<ContentType> {
     let mut new_map = HashMap::new();
     let _: Vec<()> = inpt
@@ -37,6 +39,7 @@ pub fn parse_params(inpt: &str) -> Option<ContentType> {
     }
     return Some(ContentType::UrlEncoded(new_map));
 }
+// now deprecated
 pub fn parse_body_new(inpt: Body, content_type: &str) -> Option<ContentType> {
     //This implementation will change in the future i do not think this is the correct approach but
     //it works for now
@@ -115,6 +118,25 @@ pub struct NewRequestType {
     pub body: Option<BytesMut>,
     pub headers: HashMap<String, String>,
     pub params: Option<HashMap<String, String>>,
+}
+impl NewRequestType {
+    pub fn from_json_to_struct<T: DeserializeOwned>(&self) -> std::io::Result<T> {
+        match &self.body {
+            None => return Err(std::io::Error::from(std::io::ErrorKind::InvalidData)),
+            Some(body) => {
+                let res: T = match serde_json::from_slice(&body[..]) {
+                    Ok(res) => res,
+                    Err(e) => {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            e.to_string(),
+                        ))
+                    }
+                };
+                Ok(res)
+            }
+        }
+    }
 }
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct NewMetaData {
